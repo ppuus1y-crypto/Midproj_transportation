@@ -1,0 +1,861 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>自訂交通路線</title>
+<style>
+:root{font-family:Arial,"Microsoft JhengHei","Noto Sans TC",sans-serif;color:#222;background:#f5f7fa}
+*{box-sizing:border-box}
+body{margin:0;padding:28px 18px}
+main{max-width:1180px;margin:auto}
+h1{font-size:27px;margin:0 0 8px}
+.subtitle{color:#687385;margin:0 0 22px;line-height:1.6}
+.panel{background:#fff;border:1px solid #dce2eb;border-radius:14px;padding:20px;box-shadow:0 4px 16px #1f29370a}
+.table-wrap{overflow-x:auto}
+table{border-collapse:separate;border-spacing:0;width:100%;min-width:850px}
+th{background:#f0f3f8;color:#354052;font-size:14px;font-weight:700;text-align:left;padding:13px 10px;border-bottom:1px solid #dce2eb}\nth.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+th.sortable:hover,th.sortable:focus{background:#e3eaf6;outline:none}
+.sort-indicator{display:inline-block;margin-left:3px;color:#64748b;font-size:12px}
+th.sortable[aria-sort="ascending"] .sort-indicator,
+th.sortable[aria-sort="descending"] .sort-indicator{color:#2457c5;font-weight:800}
+th:first-child{border-radius:9px 0 0 0}
+th:last-child{border-radius:0 9px 0 0}
+td{padding:10px;border-bottom:1px solid #e8edf3;vertical-align:middle}
+tbody tr:last-child td{border-bottom:0}
+tbody tr{background:white}
+tbody tr.dragging{opacity:.4}
+tbody tr.drop-target{outline:2px dashed #4776d0;outline-offset:-3px}
+.drag-cell{width:64px;text-align:center;color:#7a8493;cursor:grab;user-select:none}
+.drag-handle{font-size:23px;display:inline-block;cursor:grab;line-height:1}
+.order{display:block;font-size:12px;margin-top:3px}
+input,select{font:inherit;width:100%;min-width:0;padding:10px 9px;border:1px solid #cbd3df;border-radius:8px;background:#fff;color:#222}
+input:focus,select:focus{outline:2px solid #c9d9ff;border-color:#4776d0}
+.mode{min-width:90px}
+.time{min-width:94px}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
+button{font:inherit;font-weight:600;border:0;border-radius:8px;padding:10px 15px;cursor:pointer}
+button:focus-visible{outline:3px solid #9dbbff;outline-offset:2px}
+.primary{background:#2457c5;color:#fff}
+.secondary{background:#edf2fb;color:#254b91}
+.delete{background:#fff0f0;color:#b42323;padding:8px 10px;font-size:13px}
+button:disabled{opacity:.4;cursor:not-allowed}
+.hint{margin:17px 0 0;color:#687385;font-size:13px;line-height:1.6}
+@media(max-width:600px){body{padding:18px 10px}.panel{padding:12px}h1{font-size:23px}}
+
+.map-panel{margin-top:20px}
+.map-panel[hidden]{display:none}
+.map-panel h2{margin-bottom:8px}
+.map-note{margin:0 0 14px;color:#64748b;font-size:14px;line-height:1.6}
+#googleMap{display:block;width:100%;height:480px;border:1px solid #dbe3ee;border-radius:12px;background:#f1f5f9}
+.map-links{margin:12px 0 0}
+.map-links a{color:#2457c5;font-weight:600;text-decoration:none}
+.map-links a:hover{text-decoration:underline}
+
+.planning-fields{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin:0 0 18px}
+.planning-fields .departure-field{flex:1 1 260px;max-width:360px;margin:0}
+.route-name-field{flex:1 1 300px;max-width:480px}
+.route-name-field label{display:block;font-size:14px;color:#64748b;margin-bottom:7px}
+.route-name-field input{height:48px;border:1px solid #cbd5e1;border-radius:9px;padding:0 12px;font:inherit;font-size:17px}
+.route-name-field input:focus{outline:2px solid #bfdbfe;border-color:#2457c5}
+.route-name-field input.auto-generated-name{color:#9ca3af}
+.departure-field{max-width:360px;margin:0 0 18px}
+.departure-field label{display:block;font-size:14px;color:#64748b;margin-bottom:7px}
+.departure-field input{width:100%;height:48px;border:1px solid #cbd5e1;border-radius:9px;padding:0 12px;background:#fff;color:#222;font:inherit;font-size:17px}
+.departure-field input:focus{outline:2px solid #bfdbfe;border-color:#2457c5}
+
+.journey-summary{margin-top:20px;background:#fff;border:1px solid #d8e3f4;border-radius:14px;padding:22px;box-shadow:0 4px 16px #1f29370a}
+.journey-summary[hidden]{display:none}
+.journey-summary h2{margin:0 0 16px;font-size:23px;color:#173b76}
+.journey-total{background:#edf3ff;border:1px solid #c6d8ff;border-radius:12px;padding:17px 20px;margin-bottom:14px}
+.journey-total span{display:block;color:#55719a;font-size:14px;margin-bottom:5px}
+.journey-total strong{font-size:36px;color:#1c4079}
+.journey-legs h3{margin:0 0 8px;font-size:18px}
+.journey-leg{display:grid;grid-template-columns:88px minmax(0,1fr) auto;gap:12px;align-items:start;padding:12px 0;border-bottom:1px solid #e4eaf3}
+.journey-leg:last-child{border-bottom:0}
+.journey-leg .leg-time{font-weight:700;color:#2457c5}
+.journey-leg .leg-route strong{display:block;margin-bottom:4px}
+.journey-leg .leg-route span{color:#6b7e99;font-size:13px;line-height:1.5}
+.journey-leg .leg-duration{white-space:nowrap;font-weight:650}
+@media(max-width:700px){.journey-leg{grid-template-columns:1fr;gap:5px}.journey-leg .leg-duration{white-space:normal}}
+
+/* 儲存後的行程摘要與地圖左右並排 */
+.results-layout{max-width:1680px;margin:20px auto 36px;padding:0 24px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+.results-layout .journey-summary,.results-layout .map-panel{margin:0;min-width:0}
+.results-layout #googleMap{width:100%;height:520px;border:1px solid #dbe3ee;border-radius:12px}
+@media(max-width:900px){.results-layout{grid-template-columns:1fr;padding:0 16px}.results-layout #googleMap{height:420px}}
+
+.time-hint{display:block;margin-top:6px;color:#64748b;font-size:12px}
+.departure-time-input{max-width:360px;height:48px}
+#departureTime{font-variant-numeric:tabular-nums}
+#departureTime.invalid{border-color:#dc2626;background:#fff7f7}
+
+@media(max-width:560px){}
+
+.time-combo{position:relative;display:flex;align-items:stretch;max-width:360px}
+.time-combo .departure-time-input{flex:1;width:100%;max-width:none;padding-right:48px}
+.time-dropdown-button{position:absolute;right:1px;top:1px;bottom:1px;width:44px;border:0;border-left:1px solid #d5deeb;border-radius:0 8px 8px 0;background:#f7f9fc;color:#344b6b;font-size:20px;padding:0;cursor:pointer}
+.time-dropdown-button:hover{background:#eaf0fc}
+.time-options{position:absolute;z-index:50;top:calc(100% + 4px);left:0;right:0;max-height:250px;overflow-y:auto;background:#fff;border:1px solid #cbd5e1;border-radius:9px;box-shadow:0 8px 22px #17255420}
+.time-options[hidden]{display:none}
+.time-option{display:block;width:100%;text-align:left;background:#fff;border:0;border-radius:0;padding:9px 13px;font-weight:400;color:#24364d}
+.time-option:hover,.time-option:focus{background:#edf3ff;outline:none}
+
+/* 摘要與地圖：可拖曳調整左右寬度 */
+.results-layout{
+  max-width:1680px;
+  margin:16px auto 30px;
+  padding:0 18px;
+  display:grid;
+  grid-template-columns:minmax(280px,0.82fr) 8px minmax(320px,1.18fr);
+  gap:12px;
+  align-items:stretch;
+}
+.results-layout .journey-summary,
+.results-layout .map-panel{margin:0;min-width:0;width:100%;padding:20px;border-radius:16px}
+.results-layout .journey-summary h2,
+.results-layout .map-panel h2{font-size:21px;margin-bottom:14px}
+.summary-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.summary-heading h2{margin:0!important}
+.summary-toggle,.summary-restore{border:1px solid #cbd8ee;background:#f3f7ff;color:#234a87;border-radius:8px;cursor:pointer;font-size:18px;line-height:1;padding:8px 10px;flex-shrink:0}
+.summary-toggle:hover,.summary-restore:hover{background:#e2ecff}
+.summary-restore{display:none;position:fixed;left:0;top:50%;z-index:1000;writing-mode:horizontal-tb;letter-spacing:0;border-radius:0 8px 8px 0;box-shadow:0 3px 12px #0f172a20;padding:12px 10px;min-width:34px;min-height:42px}
+.results-layout.summary-collapsed{grid-template-columns:minmax(0,1fr)!important;gap:0}
+.results-layout.summary-collapsed .journey-summary,
+.results-layout.summary-collapsed .splitter{display:none!important}
+.results-layout.summary-collapsed .map-panel{grid-column:1;width:100%;min-width:0}
+.results-layout.summary-collapsed .summary-restore{
+  display:flex !important;
+  align-items:center;
+  justify-content:center;
+  color:#000 !important;
+  background:#fff !important;
+  border:1px solid #9ca3af !important;
+  font-size:20px !important;
+  font-weight:700;
+  visibility:visible !important;
+  opacity:1 !important;
+  pointer-events:auto !important;
+  cursor:pointer;
+}
+@media(max-width:900px){.summary-restore{top:auto;bottom:20px}}
+.results-layout .journey-total{padding:14px 16px}
+.results-layout .journey-total strong{font-size:30px}
+.results-layout #googleMap{width:100%;height:470px;border:1px solid #dbe3ee;border-radius:10px}
+.results-layout .splitter{
+  width:8px;min-height:100%;border-radius:8px;background:#d8e3f4;
+  cursor:col-resize;position:relative;touch-action:none;user-select:none;align-self:stretch;
+}
+.results-layout .splitter::after{
+  content:"⋮";position:sticky;top:50%;display:flex;align-items:center;justify-content:center;
+  height:48px;margin-top:calc(235px - 24px);border-radius:8px;background:#2457c5;color:#fff;
+  font-size:20px;font-weight:bold;line-height:1;
+}
+.results-layout .splitter:hover,.results-layout .splitter:focus{background:#9eb9eb;outline:none}
+.results-layout .journey-leg{grid-template-columns:72px minmax(0,1fr) auto;gap:8px;padding:10px 0}
+.results-layout .journey-leg .leg-route span{font-size:12px}
+@media(max-width:900px){
+  .results-layout{grid-template-columns:minmax(0,1fr);gap:14px;padding:0 12px}
+  .results-layout .splitter{display:none}
+  .results-layout #googleMap{height:380px}
+}
+
+/* 左側雙頁籤：路線規劃／路線紀錄 */
+body{padding:0 18px 28px 208px}
+.side-tabs{position:fixed;left:0;top:0;bottom:0;width:180px;background:#fff;border-right:1px solid #dce2eb;padding:24px 12px;z-index:1100;box-shadow:3px 0 12px #1f29370a}
+.side-tabs h2{font-size:17px;margin:0 8px 22px;color:#173b76}
+.side-tab{display:flex;align-items:center;gap:9px;width:100%;text-align:left;margin:6px 0;padding:12px 10px;background:transparent;color:#334155;border-radius:9px}
+.side-tab.active{background:#eaf1ff;color:#2457c5}
+.workspace-view[hidden]{display:none!important}
+#recordsView{max-width:1180px;margin:0 auto 36px}
+.records-heading{display:flex;flex-direction:column;align-items:stretch;gap:7px;margin-bottom:12px}
+.records-heading-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.records-heading h2{margin:0;color:#173b76;font-size:19px}
+.records-heading .hint{font-size:11px}
+.records-delete-row{display:flex;justify-content:flex-start;align-items:center;gap:8px;width:100%}
+.records-delete-row button{font-size:11px;padding:5px 9px}
+.records-table-wrap{width:100%;overflow-x:auto}
+.records-table-head{display:grid;grid-template-columns:24px minmax(130px,1.15fr) minmax(100px,.8fr) minmax(100px,1fr) minmax(100px,1fr) minmax(145px,1.25fr) 76px 76px;gap:8px;align-items:center;padding:10px 12px;background:#eaf0f8;border:1px solid #dce2eb;border-radius:9px 9px 0 0;color:#354052;font-size:12px;font-weight:700;margin-bottom:0;min-width:900px}
+.record-select,.select-all-records{width:14px;height:14px;cursor:pointer;flex-shrink:0;accent-color:#2457c5}
+.record-item .record-select{margin:0 2px 0 0}
+.record-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:7px}
+.record-item{display:grid;grid-template-columns:24px minmax(130px,1.15fr) minmax(100px,.8fr) minmax(100px,1fr) minmax(100px,1fr) minmax(145px,1.25fr) 76px 76px;align-items:center;column-gap:8px;row-gap:10px;padding:10px 12px;border:1px solid #dce2eb;border-top:0;border-radius:0;background:#fff;min-width:900px}
+.record-main{flex:1;min-width:0}
+.record-title{font-weight:700;color:#1f2937;overflow-wrap:anywhere;font-size:12px}
+.record-meta{font-size:11px;color:#64748b;margin-top:3px;line-height:1.45}
+.record-actions{display:flex;align-items:stretch;gap:8px;flex-shrink:0}
+.record-action-col{display:flex;flex-direction:column;align-items:stretch;min-width:54px}
+.record-action-col button{font-size:11px;padding:5px 8px;width:100%}
+.record-empty{padding:28px 18px;border:1px dashed #cbd5e1;border-radius:10px;color:#64748b;text-align:center;background:#fff}
+.record-delete{background:#fff0f0;color:#b42323}
+.record-detail{width:100%;flex-basis:100%;border-top:1px solid #e5eaf2;margin-top:10px;padding-top:14px}
+.record-item-top{display:contents}
+.record-data-cell{min-width:0;overflow-wrap:anywhere;font-size:12px;color:#334155}
+.records-table-head span:first-child{display:flex;align-items:center;justify-content:center}
+.records-table-head .sort-header{border:0;background:transparent;color:inherit;font:inherit;text-align:left;padding:0;cursor:pointer;width:100%;display:flex;align-items:center;gap:4px}
+.records-table-head .sort-header:hover{color:#2457c5}
+.records-table-head .sort-arrow{font-size:10px;color:#2457c5}
+.record-main{border:1px solid #dce2eb;border-radius:12px;background:#fff;padding:14px 16px;min-height:66px;display:flex;align-items:center}
+.record-meta{font-size:12px;color:#64748b;margin-top:0;line-height:1.5;overflow-wrap:anywhere}
+.record-action-col{display:flex;flex-direction:column;align-items:stretch;justify-content:center;min-width:0}
+.record-action-col button{font-size:12px;padding:9px 12px;width:100%;border-radius:12px;background:#fff}
+.record-detail{grid-column:2 / -1;width:100%;flex-basis:auto;border-top:1px solid #e5eaf2;margin-top:0;padding-top:14px}
+@media(max-width:700px){.record-item{grid-template-columns:14px minmax(0,1fr) 64px 64px;column-gap:6px}.record-main{padding:10px}.record-action-col button{font-size:11px;padding:7px 5px}}
+.record-detail[hidden]{display:none!important}
+.record-detail-layout{display:grid;grid-template-columns:minmax(260px,.8fr) minmax(300px,1.2fr);gap:14px;align-items:start}
+.record-detail-summary{border:1px solid #d8e3f4;border-radius:10px;padding:14px;background:#fff}
+.record-detail-summary h3,.record-detail-map h3{margin:0 0 12px;color:#173b76}
+.record-detail-total{font-size:25px;font-weight:700;color:#1c4079;background:#edf3ff;padding:12px;border-radius:8px;margin-bottom:10px}
+.record-detail-leg{padding:10px 0;border-bottom:1px solid #e4eaf3;font-size:13px;line-height:1.6}
+.record-detail-leg:last-child{border-bottom:0}
+.record-detail-map{min-width:0}
+.record-detail-map iframe{width:100%;height:340px;border:1px solid #dbe3ee;border-radius:9px}
+.record-detail-map a{display:inline-block;margin-top:8px;color:#2457c5;font-weight:600;text-decoration:none}
+@media(max-width:850px){.record-detail-layout{grid-template-columns:1fr}.record-detail-map iframe{height:300px}}
+#routePlannerView{display:block}
+@media(max-width:700px){body{padding:0 10px 20px 150px}.side-tabs{width:138px;padding:18px 8px}.side-tabs h2{font-size:15px;margin-left:4px}.side-tab{font-size:13px;padding:10px 7px}.record-item{grid-template-columns:14px minmax(0,1fr) 52px 52px;column-gap:6px}.record-actions{gap:5px}.record-action-col button{padding:5px 4px}}
+
+
+/* 統一路線規劃與路線紀錄兩個側邊頁籤的字形、顏色與大小 */
+.side-tabs .side-tab,
+.side-tabs .side-tab.active {
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  color: #000000;
+}
+.side-tabs .side-tab span { color: #000000; }
+
+
+
+/* 視覺美化：清爽中性色、統一留白與柔和圓角；不更動原有功能 */
+:root{color-scheme:light;--ui-bg:#f5f7fb;--ui-card:#fff;--ui-border:#e1e7f0;--ui-text:#111827;--ui-muted:#64748b;--ui-accent:#315ea8;--ui-soft:#edf3ff;--ui-shadow:0 8px 28px rgba(22,39,68,.07)}
+html{background:var(--ui-bg)}
+body{background:var(--ui-bg);color:var(--ui-text);font-family:Inter,"Noto Sans TC","Microsoft JhengHei",sans-serif;line-height:1.55}
+.side-tabs{background:#fff;border-right:1px solid var(--ui-border);box-shadow:5px 0 22px rgba(15,23,42,.035);padding-top:28px}
+.side-tabs h2{font-size:19px!important;font-weight:750;letter-spacing:.04em;color:#111827;margin-bottom:28px!important}
+.side-tabs .side-tab,.side-tabs .side-tab.active{font-family:inherit;font-size:16px;font-weight:650;color:#111!important;transition:background .18s ease,transform .18s ease}
+.side-tabs .side-tab{border:1px solid transparent;border-radius:12px;padding:13px 12px}
+.side-tabs .side-tab:hover{background:#f3f5f9;transform:translateX(2px)}
+.side-tabs .side-tab.active{background:#edf1f7;border-color:#e0e6ef;box-shadow:inset 3px 0 0 #475569}
+main{max-width:1500px;margin:0 auto;padding-top:24px}
+main h1,#recordsView h2{color:#111827;font-size:30px;font-weight:760;letter-spacing:.015em;line-height:1.25;margin:0 0 22px}
+.panel,.results-panel,.summary-card,.map-panel{background:var(--ui-card);border:1px solid var(--ui-border);border-radius:18px;box-shadow:var(--ui-shadow)}
+.panel{padding:24px;margin-bottom:22px}
+.planning-fields{gap:20px;margin-bottom:24px}
+label{color:#475569;font-weight:650}
+input:not([type=checkbox]):not([type=radio]),select,textarea{border:1px solid #d5deea;border-radius:11px;background:#fff;color:#111827;transition:border-color .15s,box-shadow .15s}
+input:not([type=checkbox]):not([type=radio]):focus,select:focus,textarea:focus{outline:none;border-color:#8098bd;box-shadow:0 0 0 3px rgba(71,101,151,.12)}
+button{border-radius:10px;transition:background .15s ease,box-shadow .15s ease,transform .15s ease}
+button:hover{filter:brightness(.98)}
+button:active{transform:translateY(1px)}
+.table-wrap{border:1px solid var(--ui-border);border-radius:14px;overflow:auto;background:#fff}
+table{border-collapse:separate;border-spacing:0;width:100%}
+thead th{background:#f1f4f8;color:#1f2937;font-weight:700;border-bottom:1px solid #dfe6ef;padding:15px 13px}
+tbody td{padding:12px 10px;border-bottom:1px solid #edf0f5}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:#fafbfd}
+tbody input,tbody select{min-height:42px}
+.records-heading{padding:18px 20px;background:#fff;border:1px solid var(--ui-border);border-radius:16px 16px 0 0;margin-bottom:0}
+.records-heading h2{font-size:25px;margin:0}
+.records-table-head{background:#f1f4f8!important;border-color:var(--ui-border)!important;color:#111827!important;font-size:13px!important;padding:13px 14px!important}
+.record-item{background:#fff;border-color:#e9edf3!important;padding:14px!important;transition:background .15s ease}
+.record-item:hover{background:#fafbfd}
+.record-item,.record-detail{border-left:1px solid var(--ui-border);border-right:1px solid var(--ui-border)}
+.record-list{border-bottom:1px solid var(--ui-border);border-radius:0 0 14px 14px;overflow:hidden}
+.records-table-wrap{border-radius:0 0 14px 14px;box-shadow:var(--ui-shadow)}
+.records-delete-row button,.record-delete{border-radius:9px}
+.results-layout{border-radius:16px}
+@media(max-width:700px){main{padding-top:16px}.panel{padding:15px;border-radius:14px}main h1{font-size:25px}.side-tabs h2{font-size:16px!important}}
+
+
+/* 左側「自訂交通」導覽列可收合／展開 */
+.side-tabs{transition:transform .22s ease;}
+#toggleSidebar{position:absolute;right:-17px;top:24px;width:34px;height:38px;padding:0;border:1px solid #d8dee8;border-radius:0 10px 10px 0;background:#fff;color:#111;font-size:16px;font-weight:700;line-height:1;cursor:pointer;box-shadow:3px 2px 8px rgba(15,23,42,.10);z-index:1400;}
+#toggleSidebar:hover{background:#f1f5f9;}
+body.sidebar-collapsed .side-tabs{transform:translateX(-100%);}
+body.sidebar-collapsed{padding-left:28px !important;}
+body.sidebar-collapsed #toggleSidebar{right:-34px;width:34px;border-radius:0 10px 10px 0;}
+.summary-restore{left:180px !important;z-index:1300 !important;}
+body.sidebar-collapsed .summary-restore{left:0 !important;}
+@media(max-width:700px){.summary-restore{left:138px !important;}body.sidebar-collapsed{padding-left:10px !important;}}
+</style>
+</head>
+<body>
+<nav class="side-tabs" aria-label="主要頁籤">
+  <button type="button" id="toggleSidebar" aria-label="收合左側導覽列" title="收合左側導覽列">◀</button>
+  <h2>自訂交通</h2>
+  <button class="side-tab active" id="plannerTab" type="button"><span>⌖</span> 路線規劃</button>
+  <button class="side-tab" id="recordsTab" type="button"><span>☷</span> 路線紀錄</button>
+</nav>
+<div id="routePlannerView" class="workspace-view">
+<main>
+  <h1>路線規劃</h1>
+
+  <section class="panel">
+    <div class="planning-fields">
+    <div class="departure-field">
+      <label for="departureTime">出發時間（00:00～23:59）</label>
+      <div class="time-combo">
+        <input id="departureTime" class="departure-time-input" type="text" value="09:00" inputmode="numeric" placeholder="00:00" pattern="([01]?[0-9]|2[0-3]):[0-5][0-9]" maxlength="5" aria-describedby="departureTimeHint" autocomplete="off">
+        <button type="button" id="toggleTimeOptions" class="time-dropdown-button" aria-label="展開出發時間選項" aria-expanded="false">▾</button>
+        <div id="departureTimeOptions" class="time-options" role="listbox" aria-label="出發時間選項" hidden></div>
+      </div>
+      <small id="departureTimeHint" class="time-hint">可直接輸入 00:00～23:59，例如 09:30。</small>
+    </div>
+    <div class="route-name-field">
+      <label for="routeName">路線名稱</label>
+      <input id="routeName" type="text" maxlength="80" placeholder="例如：202610101424" autocomplete="off">
+    </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th style="width:70px">排序</th>
+          <th class="sortable" data-sort="from" tabindex="0" role="button" aria-label="依起點排序">起點 <span class="sort-indicator">↕</span></th>
+          <th class="sortable" data-sort="to" tabindex="0" role="button" aria-label="依終點排序">終點 <span class="sort-indicator">↕</span></th>
+          <th class="sortable" data-sort="mode" style="width:125px" tabindex="0" role="button" aria-label="依交通工具排序">交通工具 <span class="sort-indicator">↕</span></th>
+          <th class="sortable" data-sort="time" style="width:125px" tabindex="0" role="button" aria-label="依預估時間排序">預估時間 <span class="sort-indicator">↕</span></th>
+          <th class="sortable" data-sort="stay" style="width:125px" tabindex="0" role="button" aria-label="依停留時間排序">停留時間 <span class="sort-indicator">↕</span></th>
+          <th style="width:90px">操作</th>
+        </tr></thead>
+        <tbody id="routeRows"></tbody>
+      </table>
+    </div>
+    <div class="actions">
+      <button class="primary" id="addRoute" type="button">＋ 新增路段</button>
+      <button class="secondary" id="clearRoutes" type="button">清除</button>
+      <button class="secondary" id="saveRoutes" type="button">儲存</button>
+    </div>
+    
+  </section>
+</main>
+<div class="results-layout" id="resultsLayout">
+  <section class="journey-summary" id="journeySummary" hidden>
+    <div class="summary-heading"><h2>總行程時間與明細</h2><button class="summary-toggle" id="collapseSummary" type="button" title="收合至側邊" aria-label="收合總行程時間與明細">‹</button></div>
+    <div class="journey-total">
+      <span>預估總行程時間</span>
+      <strong id="journeyTotal">—</strong>
+    </div>
+    <div class="journey-legs" id="journeyLegs"></div>
+  </section>
+  <button class="summary-restore" id="restoreSummary" type="button" title="展開行程明細" aria-label="展開總行程時間與明細">▶</button>
+  <div class="splitter" id="resultSplitter" role="separator" aria-label="拖曳調整行程明細與地圖寬度" aria-orientation="vertical" tabindex="0" title="左右拖曳調整版面"></div>
+  <section class="map-panel" id="mapPanel" hidden>
+    <h2>Google Maps 路線</h2>
+    <p class="map-note" id="mapNote">已依照儲存的路段顯示路線。</p>
+    <iframe id="googleMap" title="Google Maps 路線地圖" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
+    <p class="map-links"><a id="openGoogleMaps" href="#" target="_blank" rel="noopener noreferrer">在 Google Maps 開啟完整路線 ↗</a></p>
+  </section>
+</div>
+</div>
+<section id="recordsView" class="workspace-view" hidden>
+  <div class="records-heading"><div class="records-heading-top"><h2>路線紀錄</h2><span id="recordCount" class="hint">共 0 筆紀錄</span></div><div class="records-delete-row"><button type="button" id="deleteAllRecords" class="record-delete">刪除</button></div></div>
+  <div class="records-table-wrap"><div class="records-table-head"><span><input type="checkbox" id="selectAllRecords" class="select-all-records" aria-label="全選或取消全選路線紀錄" title="全選／取消全選"></span><span><button type="button" class="sort-header" data-sort="title">路線名稱 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="departureTime">出發時間 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="origin">起點 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="destination">終點 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="savedAt">儲存時間 <span class="sort-arrow"></span></button></span><span></span><span></span></div><ul class="record-list" id="recordList"></ul></div>
+</section>
+<script>
+// 左側自訂交通導覽列收合／展開
+(() => {
+  const button = document.getElementById('toggleSidebar');
+  if (!button) return;
+  button.addEventListener('click', () => {
+    const collapsed = document.body.classList.toggle('sidebar-collapsed');
+    button.textContent = collapsed ? '▶' : '◀';
+    button.setAttribute('aria-label', collapsed ? '展開左側導覽列' : '收合左側導覽列');
+    button.title = collapsed ? '展開左側導覽列' : '收合左側導覽列';
+  });
+})();
+
+// 新建行程時，路線名稱預帶本機電腦日期與時間（YYYYMMDDHHmm），並以灰字顯示。
+function defaultRouteNameFromLocalTime() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+const initialRoutes = [
+  {from:'天母sogo',to:'士林捷運站',mode:'捷運',time:'10min',stay:'1hr'},
+  {from:'劍潭集運站',to:'台北車站',mode:'公車',time:'10min',stay:'3min'},
+  {from:'優仕紳烘焙',to:'西門町',mode:'步行',time:'50min',stay:'30min'},
+  {from:'台北車站',to:'南港捷運站',mode:'火車',time:'20min',stay:''}
+];
+let routes = initialRoutes.map((r,i)=>({...r,id:i+1}));
+let nextId = routes.length+1;
+let dragId = null;
+const tbody = document.getElementById('routeRows');
+const modes = ['預設','捷運','公車','火車','ubike','步行'];
+
+function createInput(value, cls, placeholder='') {
+  const input=document.createElement('input');
+  input.value=value;
+  input.className=cls;
+  input.placeholder=placeholder;
+  input.addEventListener('input',()=>{const row=input.closest('tr');const route=routes.find(r=>r.id===Number(row.dataset.id));if(route)route[cls]=input.value;});
+  return input;
+}
+// 點擊資料欄位表頭排序；同一欄再次點擊會切換升冪／降冪。
+let routeSort = {key:null, direction:1};
+function sortRoutesBy(key){
+  const direction = routeSort.key===key ? -routeSort.direction : 1;
+  routeSort = {key, direction};
+  const textValue = value => String(value ?? '').trim().toLocaleLowerCase('zh-TW');
+  routes.sort((a,b)=>{
+    let result=0;
+    if(key==='time'||key==='stay'){
+      result=durationMinutes(a[key])-durationMinutes(b[key]);
+    }else{
+      result=textValue(a[key]).localeCompare(textValue(b[key]),'zh-TW',{numeric:true,sensitivity:'base'});
+    }
+    return result*direction;
+  });
+  document.querySelectorAll('th[data-sort]').forEach(th=>{
+    const active=th.dataset.sort===key;
+    th.setAttribute('aria-sort',active?(direction===1?'ascending':'descending'):'none');
+    const indicator=th.querySelector('.sort-indicator');
+    if(indicator)indicator.textContent=active?(direction===1?'↑':'↓'):'↕';
+  });
+  render();
+}
+document.querySelectorAll('th[data-sort]').forEach(th=>{
+  th.addEventListener('click',()=>sortRoutesBy(th.dataset.sort));
+  th.addEventListener('keydown',event=>{
+    if(event.key==='Enter'||event.key===' '){event.preventDefault();sortRoutesBy(th.dataset.sort);}
+  });
+});
+function render(){
+  tbody.innerHTML='';
+  routes.forEach((route,index)=>{
+    const tr=document.createElement('tr');
+    tr.dataset.id=route.id;
+    tr.draggable=true;
+    tr.addEventListener('dragstart',e=>{dragId=route.id;tr.classList.add('dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',String(route.id));});
+    tr.addEventListener('dragend',()=>{dragId=null;tr.classList.remove('dragging');tbody.querySelectorAll('.drop-target').forEach(x=>x.classList.remove('drop-target'));});
+    tr.addEventListener('dragover',e=>{e.preventDefault();if(route.id!==dragId)tr.classList.add('drop-target');});
+    tr.addEventListener('dragleave',()=>tr.classList.remove('drop-target'));
+    tr.addEventListener('drop',e=>{
+      e.preventDefault();tr.classList.remove('drop-target');
+      const fromId=dragId ?? Number(e.dataTransfer.getData('text/plain'));
+      if(!fromId||fromId===route.id)return;
+      const fromIndex=routes.findIndex(r=>r.id===fromId);
+      const toIndex=routes.findIndex(r=>r.id===route.id);
+      if(fromIndex<0||toIndex<0)return;
+      const [moved]=routes.splice(fromIndex,1);routes.splice(toIndex,0,moved);render();
+    });
+
+    const dragTd=document.createElement('td');dragTd.className='drag-cell';
+    const handle=document.createElement('span');handle.className='drag-handle';handle.textContent='⠿';handle.title='拖曳重新排序';handle.setAttribute('aria-label','拖曳重新排序');
+    const order=document.createElement('span');order.className='order';order.textContent=index+1;
+    dragTd.append(handle,order);tr.appendChild(dragTd);
+
+    const fromTd=document.createElement('td');fromTd.appendChild(createInput(route.from,'from','輸入起點'));tr.appendChild(fromTd);
+    const toTd=document.createElement('td');toTd.appendChild(createInput(route.to,'to','輸入終點'));tr.appendChild(toTd);
+    const modeTd=document.createElement('td');
+    const select=document.createElement('select');select.className='mode';
+    modes.forEach(mode=>{const option=document.createElement('option');option.value=mode;option.textContent=mode;option.selected=route.mode===mode;select.appendChild(option);});
+    select.addEventListener('change',()=>{route.mode=select.value;});modeTd.appendChild(select);tr.appendChild(modeTd);
+    const timeTd=document.createElement('td');timeTd.appendChild(createInput(route.time,'time','例如 10min'));tr.appendChild(timeTd);
+    const stayTd=document.createElement('td');stayTd.appendChild(createInput(route.stay,'stay','例如 1hr'));tr.appendChild(stayTd);
+    const opTd=document.createElement('td');const del=document.createElement('button');del.type='button';del.className='delete';del.textContent='刪除';
+    del.addEventListener('click',()=>{routes=routes.filter(r=>r.id!==route.id);render();});opTd.appendChild(del);tr.appendChild(opTd);
+    tbody.appendChild(tr);
+  });
+}
+document.getElementById('addRoute').addEventListener('click',()=>{routes.push({id:nextId++,from:'',to:'',mode:'預設',time:'',stay:''});render();});
+document.getElementById('clearRoutes').addEventListener('click',()=>{
+  if(!confirm('確定要清除所有路段嗎？')) return;
+  routes=[];
+  render();
+});
+function showGoogleMap() {
+  const validRoutes = routes.map(r => ({
+    from: String(r.from || '').trim(),
+    to: String(r.to || '').trim(),
+    mode: String(r.mode || '').trim()
+  })).filter(r => r.from || r.to);
+
+  const points = [];
+  validRoutes.forEach(r => {
+    if (r.from && (!points.length || points[points.length - 1] !== r.from)) points.push(r.from);
+    if (r.to && (!points.length || points[points.length - 1] !== r.to)) points.push(r.to);
+  });
+
+  const mapPanel = document.getElementById('mapPanel');
+  const mapFrame = document.getElementById('googleMap');
+  const mapNote = document.getElementById('mapNote');
+  const openLink = document.getElementById('openGoogleMaps');
+  mapPanel.hidden = false;
+
+  if (points.length < 2) {
+    mapNote.textContent = '請至少填寫兩個地點（起點與終點），再按「儲存」顯示路線。';
+    mapFrame.removeAttribute('src');
+    openLink.href = 'https://www.google.com/maps';
+    mapPanel.scrollIntoView({behavior:'smooth', block:'start'});
+    return;
+  }
+
+  // Embed a directions search using the first and last stop, with intermediate stops as waypoints.
+  const origin = points[0];
+  const destination = points[points.length - 1];
+  const waypoints = points.slice(1, -1);
+  const params = new URLSearchParams({
+    api: '1',
+    origin,
+    destination,
+    travelmode: 'transit'
+  });
+  if (waypoints.length) params.set('waypoints', waypoints.join('|'));
+  const mapUrl = 'https://www.google.com/maps/dir/?' + params.toString();
+  mapFrame.src = 'https://www.google.com/maps?output=embed&' + new URLSearchParams({
+    q: points.join(' to ')
+  }).toString();
+  // Use a directions URL as the reliable clickable full-route link.
+  openLink.href = mapUrl;
+  mapNote.textContent = `路線順序：${points.join(' → ')}。地圖由 Google Maps 提供；各段交通工具可能會由 Google Maps 重新規劃。`;
+  mapPanel.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+
+const departureInput = document.getElementById('departureTime');
+const departureOptions = document.getElementById('departureTimeOptions');
+const toggleTimeOptions = document.getElementById('toggleTimeOptions');
+for (let mins = 0; mins < 24 * 60; mins += 30) {
+  const hh = String(Math.floor(mins / 60)).padStart(2, '0');
+  const mm = String(mins % 60).padStart(2, '0');
+  const value = `${hh}:${mm}`;
+  const option = document.createElement('button');
+  option.type = 'button';
+  option.className = 'time-option';
+  option.role = 'option';
+  option.textContent = value;
+  option.addEventListener('click', () => {
+    departureInput.value = value;
+    departureInput.classList.remove('invalid');
+    departureOptions.hidden = true;
+    toggleTimeOptions.setAttribute('aria-expanded', 'false');
+    departureInput.focus();
+  });
+  departureOptions.appendChild(option);
+}
+function toggleDepartureOptions() {
+  departureOptions.hidden = !departureOptions.hidden;
+  toggleTimeOptions.setAttribute('aria-expanded', String(!departureOptions.hidden));
+}
+toggleTimeOptions.addEventListener('click', toggleDepartureOptions);
+departureInput.addEventListener('focus', () => {
+  // The dropdown button always opens the explicit list; typing remains available in the same field.
+});
+document.addEventListener('click', event => {
+  if (!event.target.closest('.time-combo')) {
+    departureOptions.hidden = true;
+    toggleTimeOptions.setAttribute('aria-expanded', 'false');
+  }
+});
+function normalizeDepartureTime(showMessage = false) {
+  const input = document.getElementById('departureTime');
+  const raw = input.value.trim();
+  const match = raw.match(/^(\d{1,2}):([0-5]\d)$/);
+  const valid = match && Number(match[1]) >= 0 && Number(match[1]) <= 23;
+  input.classList.toggle('invalid', !valid);
+  if (!valid) {
+    if (showMessage) {
+      alert('請輸入有效的 24 小時制時間，例如 00:00、09:30 或 23:59。');
+      input.focus();
+    }
+    return null;
+  }
+  const normalized = String(Number(match[1])).padStart(2, '0') + ':' + match[2];
+  input.value = normalized;
+  return normalized;
+}
+document.getElementById('departureTime').addEventListener('input', () => {
+  document.getElementById('departureTime').classList.remove('invalid');
+});
+document.getElementById('departureTime').addEventListener('blur', () => {
+  if (document.getElementById('departureTime').value.trim()) normalizeDepartureTime(false);
+});
+
+const routeNameInput = document.getElementById('routeName');
+if (routeNameInput && !routeNameInput.value.trim()) { routeNameInput.value = defaultRouteNameFromLocalTime(); routeNameInput.classList.add('auto-generated-name'); }
+routeNameInput?.addEventListener('input', () => routeNameInput.classList.remove('auto-generated-name'));
+
+document.getElementById('saveRoutes').addEventListener('click',()=>{
+  try {
+    const departureTime = normalizeDepartureTime(true);
+    if (departureTime === null) return;
+    const title = document.getElementById('routeName').value.trim();
+    if (!title) {
+      alert('請先填寫路線名稱。');
+      document.getElementById('routeName').focus();
+      return;
+    }
+    const snapshot = JSON.parse(JSON.stringify(routes));
+    localStorage.setItem('customTransitRoutes', JSON.stringify({routes: snapshot, departureTime, title}));
+    // 路線名稱相同時更新原紀錄；名稱不同才新增紀錄。
+    const records = getJourneyRecords();
+    const existingIndex = records.findIndex(record => String(record.title || '').trim() === title);
+    const recordData = {title, departureTime, routes:snapshot, savedAt:new Date().toLocaleString('zh-TW',{hour12:false})};
+    if (existingIndex >= 0) {
+      records[existingIndex] = {...records[existingIndex], ...recordData};
+    } else {
+      records.unshift({id: Date.now(), ...recordData});
+    }
+    localStorage.setItem('customTransitJourneyRecords', JSON.stringify(records));
+    renderJourneyRecords();
+    showJourneySummary(departureTime);
+    showGoogleMap();
+  } catch (error) {
+    alert('儲存失敗，請確認瀏覽器是否允許本機儲存。');
+  }
+});
+
+function durationMinutes(text) {
+  const s = String(text || '').trim().toLowerCase();
+  if (!s) return 0;
+  let total = 0, matched = false;
+  for (const m of s.matchAll(/(\d+(?:\.\d+)?)\s*(?:hr|hrs|hour|hours|小時|時)/g)) { total += Number(m[1]) * 60; matched = true; }
+  for (const m of s.matchAll(/(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|分鐘|分)/g)) { total += Number(m[1]); matched = true; }
+  if (!matched && /^\d+(?:\.\d+)?$/.test(s)) total = Number(s);
+  return Math.round(total);
+}
+function showJourneySummary(departureTime) {
+  const summary = document.getElementById('journeySummary');
+  const totalEl = document.getElementById('journeyTotal');
+  const legsEl = document.getElementById('journeyLegs');
+  summary.hidden = false;
+  legsEl.innerHTML = '<h3>行程明細</h3>';
+
+  let travel = 0, walking = 0, stay = 0;
+  const legData = routes.map((r, i) => {
+    const minutes = durationMinutes(r.time);
+    const stop = durationMinutes(r.stay);
+    if (r.mode === '步行') walking += minutes; else travel += minutes;
+    stay += stop;
+    return {r, i, minutes, stop, total: minutes + stop};
+  });
+  const total = travel + walking + stay;
+  totalEl.textContent = `${Math.floor(total / 60)} 小時 ${total % 60} 分鐘`;
+  let clock = departureTime;
+  let currentMinutes = Number(clock.slice(0, 2)) * 60 + Number(clock.slice(3, 5));
+  legData.forEach(({r, i, minutes, stop, total: legTotal}) => {
+    const start = formatClock(currentMinutes);
+    currentMinutes += legTotal;
+    const end = formatClock(currentMinutes);
+    const row = document.createElement('div'); row.className = 'journey-leg';
+    const times = document.createElement('div'); times.className = 'leg-time'; times.textContent = `${start}–${end}`;
+    const route = document.createElement('div'); route.className = 'leg-route';
+    const title = document.createElement('strong'); title.textContent = `${i + 1}. ${r.from || '未填起點'} → ${r.to || '未填終點'}`;
+    const meta = document.createElement('span'); meta.textContent = `${r.mode || '未選交通工具'}｜行程 ${minutes} 分鐘｜停留 ${stop} 分鐘`;
+    route.append(title, meta);
+    const duration = document.createElement('div'); duration.className = 'leg-duration'; duration.textContent = `${legTotal} 分鐘`;
+    row.append(times, route, duration); legsEl.append(row);
+  });
+}
+function formatClock(minutes) {
+  minutes = ((minutes % 1440) + 1440) % 1440;
+  return String(Math.floor(minutes / 60)).padStart(2, '0') + ':' + String(minutes % 60).padStart(2, '0');
+}
+try {
+  const saved = localStorage.getItem('customTransitRoutes');
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    if (Array.isArray(parsed)) {
+      routes = parsed;
+    } else if (parsed && Array.isArray(parsed.routes)) {
+      routes = parsed.routes;
+      if (parsed.departureTime) document.getElementById('departureTime').value = parsed.departureTime;
+    }
+    routes = routes.map(r => ({...r, mode: ['預設','捷運','公車','火車','ubike','步行'].includes(r.mode) ? r.mode : '預設'}));
+    nextId = Math.max(0, ...routes.map(r => Number(r.id) || 0)) + 1;
+  }
+} catch (error) {}
+render();
+
+// 路線紀錄管理：每筆紀錄獨立保存，可載入編輯或刪除。
+function getJourneyRecords(){
+  try { const data=JSON.parse(localStorage.getItem('customTransitJourneyRecords')||'[]'); return Array.isArray(data)?data:[]; }
+  catch(e){ return []; }
+}
+document.getElementById('selectAllRecords').addEventListener('change', event=>{
+  document.querySelectorAll('#recordList .record-select').forEach(box=>{box.checked=event.target.checked;});
+});
+document.getElementById('deleteAllRecords').addEventListener('click',()=>{
+  const selected=[...document.querySelectorAll('#recordList .record-select:checked')].map(box=>box.dataset.recordId);
+  if(!selected.length){alert('請先勾選要刪除的路線紀錄。');return;}
+  const selectedSet=new Set(selected);
+  const updated=getJourneyRecords().filter(record=>!selectedSet.has(String(record.id)));
+  localStorage.setItem('customTransitJourneyRecords',JSON.stringify(updated));
+  renderJourneyRecords();
+});
+
+let journeyRecordSort={key:'',direction:1};
+document.querySelectorAll('.records-table-head .sort-header').forEach(button=>{
+  button.addEventListener('click',()=>{
+    const key=button.dataset.sort;
+    journeyRecordSort.direction=journeyRecordSort.key===key?-journeyRecordSort.direction:1;
+    journeyRecordSort.key=key;
+    document.querySelectorAll('.records-table-head .sort-header').forEach(item=>{
+      const arrow=item.querySelector('.sort-arrow');
+      if(arrow)arrow.textContent=item.dataset.sort===key?(journeyRecordSort.direction===1?'▲':'▼'):'';
+      item.setAttribute('aria-sort',item.dataset.sort===key?(journeyRecordSort.direction===1?'ascending':'descending'):'none');
+    });
+    renderJourneyRecords();
+  });
+});
+function renderJourneyRecords(){
+  const list=document.getElementById('recordList');
+  const count=document.getElementById('recordCount');
+  if(!list||!count)return;
+  const records=getJourneyRecords();
+  if(journeyRecordSort.key){
+    const fieldValue=(record,key)=>{
+      if(key==='origin')return (Array.isArray(record.routes)?record.routes:[]).find(r=>String(r.from||'').trim())?.from||'未填起點';
+      if(key==='destination')return [...(Array.isArray(record.routes)?record.routes:[])].reverse().find(r=>String(r.to||'').trim())?.to||'未填終點';
+      return record[key]|| (key==='title'?'未命名行程':key==='departureTime'?'未設定':'未知');
+    };
+    records.sort((a,b)=>String(fieldValue(a,journeyRecordSort.key)).localeCompare(String(fieldValue(b,journeyRecordSort.key)),'zh-Hant',{numeric:true,sensitivity:'base'})*journeyRecordSort.direction);
+  }
+  count.textContent=`共 ${records.length} 筆紀錄`;
+  list.innerHTML='';
+  const selectAll=document.getElementById('selectAllRecords');
+  if(selectAll){selectAll.checked=false;selectAll.indeterminate=false;selectAll.disabled=!records.length;}
+  if(!records.length){
+    const li=document.createElement('li');li.className='record-empty';li.textContent='目前沒有路線紀錄。請先到「路線規劃」編輯路線並按下「儲存」。';list.append(li);return;
+  }
+  records.forEach(record=>{
+    const li=document.createElement('li');li.className='record-item';
+    const top=document.createElement('div');top.className='record-item-top';
+    const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.className='record-select';checkbox.dataset.recordId=String(record.id);checkbox.setAttribute('aria-label',`勾選路線 ${record.title||'未命名行程'}`);
+    checkbox.addEventListener('change',()=>{
+      const all=[...document.querySelectorAll('#recordList .record-select')];
+      const master=document.getElementById('selectAllRecords');
+      if(master){master.checked=all.length>0&&all.every(box=>box.checked);master.indeterminate=all.some(box=>box.checked)&&!master.checked;}
+    });
+    const savedRoutes=Array.isArray(record.routes)?record.routes:[];
+    const origin=savedRoutes.find(r=>String(r.from||'').trim())?.from||'未填起點';
+    const destination=[...savedRoutes].reverse().find(r=>String(r.to||'').trim())?.to||'未填終點';
+    const values=[record.title||'未命名行程',record.departureTime||'未設定',origin,destination,record.savedAt||'未知'];
+    const main=document.createElement('div');main.className='record-main';main.style.display='contents';
+    values.forEach(value=>{const cell=document.createElement('div');cell.className='record-data-cell';cell.textContent=value;main.append(cell);});
+    const expandCol=document.createElement('div');expandCol.className='record-action-col';
+    const expand=document.createElement('button');expand.type='button';expand.className='secondary';expand.textContent='展開';
+    const detail=document.createElement('div');detail.className='record-detail';detail.hidden=true;
+    expand.addEventListener('click',()=>{
+      const opening=detail.hidden;
+      detail.hidden=!opening;
+      expand.textContent=opening?'收合':'展開';
+      if(opening) renderRecordDetail(detail,record);
+    });
+    expandCol.append(expand);
+    const editCol=document.createElement('div');editCol.className='record-action-col';
+    const load=document.createElement('button');load.type='button';load.className='secondary';load.textContent='編輯';
+    load.addEventListener('click',()=>{
+      routes=(Array.isArray(record.routes)?record.routes:[]).map(r=>({...r, id:Number(r.id)||nextId++}));
+      nextId=Math.max(0,...routes.map(r=>Number(r.id)||0))+1;
+      document.getElementById('departureTime').value=record.departureTime||'09:00';
+      document.getElementById('routeName').value=record.title||'';
+      document.getElementById('routeName').classList.remove('auto-generated-name');
+      render();
+      document.getElementById('journeySummary').hidden=true;
+      document.getElementById('mapPanel').hidden=true;
+      switchWorkspace('planner');
+      window.scrollTo({top:0,behavior:'smooth'});
+    });
+    editCol.append(load);
+    top.append(checkbox,main,expandCol,editCol);li.append(top,detail);list.append(li);
+  });
+}
+function renderRecordDetail(container,record){
+  const savedRoutes=Array.isArray(record.routes)?record.routes:[];
+  const minutesOf=text=>{
+    const value=String(text||'').trim().toLowerCase();let total=0,matched=false;
+    for(const m of value.matchAll(/(\d+(?:\.\d+)?)\s*(?:hr|hrs|hour|hours|小時|時)/g)){total+=Number(m[1])*60;matched=true;}
+    for(const m of value.matchAll(/(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|分鐘|分)/g)){total+=Number(m[1]);matched=true;}
+    if(!matched&&/^\d+(?:\.\d+)?$/.test(value))total=Number(value);
+    return Math.round(total);
+  };
+  const fmt=mins=>`${String(Math.floor((mins%1440+1440)%1440/60)).padStart(2,'0')}:${String((mins%60+60)%60).padStart(2,'0')}`;
+  const layout=document.createElement('div');layout.className='record-detail-layout';
+  const summary=document.createElement('section');summary.className='record-detail-summary';
+  const heading=document.createElement('h3');heading.textContent='總行程時間與明細';summary.append(heading);
+  let total=0;const data=savedRoutes.map(r=>{const travel=minutesOf(r.time),stay=minutesOf(r.stay);total+=travel+stay;return {r,travel,stay};});
+  const totalEl=document.createElement('div');totalEl.className='record-detail-total';totalEl.textContent=`${Math.floor(total/60)} 小時 ${total%60} 分鐘`;summary.append(totalEl);
+  let clock=String(record.departureTime||'09:00');let current=Number(clock.slice(0,2))*60+Number(clock.slice(3,5));
+  data.forEach(({r,travel,stay},i)=>{const start=fmt(current);current+=travel+stay;const end=fmt(current);const line=document.createElement('div');line.className='record-detail-leg';line.textContent=`${start}–${end}｜${i+1}. ${r.from||'未填起點'} → ${r.to||'未填終點'}｜${r.mode||'未選交通工具'}｜行程 ${travel} 分鐘｜停留 ${stay} 分鐘`;summary.append(line);});
+  const map=document.createElement('section');map.className='record-detail-map';const mapHeading=document.createElement('h3');mapHeading.textContent='Google Maps';map.append(mapHeading);
+  const points=[];savedRoutes.forEach(r=>{const from=String(r.from||'').trim(),to=String(r.to||'').trim();if(from&&points.at(-1)!==from)points.push(from);if(to&&points.at(-1)!==to)points.push(to);});
+  const iframe=document.createElement('iframe');iframe.title='已儲存行程地圖（查閱模式）';iframe.loading='lazy';iframe.referrerPolicy='no-referrer-when-downgrade';iframe.allowFullscreen=true;
+  const link=document.createElement('a');link.target='_blank';link.rel='noopener noreferrer';link.textContent='在 Google Maps 開啟完整路線 ↗';
+  if(points.length>=2){iframe.src='https://www.google.com/maps?output=embed&'+new URLSearchParams({q:points.join(' to ')}).toString();const params=new URLSearchParams({api:'1',origin:points[0],destination:points[points.length-1],travelmode:'transit'});if(points.length>2)params.set('waypoints',points.slice(1,-1).join('|'));link.href='https://www.google.com/maps/dir/?'+params.toString();}
+  else{iframe.hidden=true;const note=document.createElement('p');note.textContent='這筆紀錄尚未有足夠的起點與終點可顯示地圖。';map.append(note);link.href='https://www.google.com/maps';}
+  map.append(iframe,link);layout.append(summary,map);container.replaceChildren(layout);
+}
+function switchWorkspace(which){
+  const planner=which==='planner';
+  document.getElementById('routePlannerView').hidden=!planner;
+  document.getElementById('recordsView').hidden=planner;
+  document.getElementById('plannerTab').classList.toggle('active',planner);
+  document.getElementById('recordsTab').classList.toggle('active',!planner);
+}
+document.getElementById('plannerTab').addEventListener('click',()=>switchWorkspace('planner'));
+document.getElementById('recordsTab').addEventListener('click',()=>{renderJourneyRecords();switchWorkspace('records');});
+renderJourneyRecords();
+
+// 行程明細可收合至側邊，也可隨時展開。
+(() => {
+  const layout = document.getElementById('resultsLayout');
+  const collapse = document.getElementById('collapseSummary');
+  const restore = document.getElementById('restoreSummary');
+  if (!layout || !collapse || !restore) return;
+  collapse.addEventListener('click', () => {
+    layout.classList.add('summary-collapsed');
+    restore.setAttribute('aria-expanded', 'false');
+    restore.focus();
+  });
+  restore.addEventListener('click', () => {
+    layout.classList.remove('summary-collapsed');
+    restore.setAttribute('aria-expanded', 'true');
+    collapse.focus();
+  });
+})();
+
+// 拖曳中間分隔條，動態調整摘要與地圖欄寬。
+(() => {
+  const layout = document.getElementById('resultsLayout');
+  const splitter = document.getElementById('resultSplitter');
+  if (!layout || !splitter) return;
+  let dragging = false;
+  const setRatio = (clientX) => {
+    const rect = layout.getBoundingClientRect();
+    const usable = rect.width - 32;
+    const x = Math.max(0.25, Math.min(0.7, (clientX - rect.left) / usable));
+    layout.style.gridTemplateColumns = `minmax(240px, ${x}fr) 8px minmax(280px, ${1-x}fr)`;
+  };
+  splitter.addEventListener('pointerdown', e => {
+    if (window.matchMedia('(max-width: 900px)').matches) return;
+    dragging = true;
+    splitter.setPointerCapture(e.pointerId);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  splitter.addEventListener('pointermove', e => { if (dragging) setRatio(e.clientX); });
+  const stop = () => {
+    dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  };
+  splitter.addEventListener('pointerup', stop);
+  splitter.addEventListener('pointercancel', stop);
+  splitter.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const cols = getComputedStyle(layout).gridTemplateColumns.split(' ');
+    const rect = layout.getBoundingClientRect();
+    const currentLeft = parseFloat(cols[0]) || rect.width * 0.42;
+    setRatio(rect.left + currentLeft + (e.key === 'ArrowRight' ? 24 : -24));
+  });
+})();
+
+</script>
+</body>
+</html>
