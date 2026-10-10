@@ -49,6 +49,7 @@
     </div>
     <div class="actions">
       <button class="primary" id="addRoute" type="button">＋ 新增路段</button>
+      <button class="secondary" id="queryRoutes" type="button">查詢</button>
       <button class="secondary" id="clearRoutes" type="button">清除</button>
       <button class="secondary" id="saveRoutes" type="button">儲存</button>
     </div>
@@ -68,7 +69,7 @@
   <div class="splitter" id="resultSplitter" role="separator" aria-label="拖曳調整行程明細與地圖寬度" aria-orientation="vertical" tabindex="0" title="左右拖曳調整版面"></div>
   <section class="map-panel" id="mapPanel" hidden>
     <h2>Google Maps 路線</h2>
-    <p class="map-note" id="mapNote">已依照儲存的路段顯示路線。</p>
+    <p class="map-note" id="mapNote">已依照目前輸入的路段顯示路線。</p>
     <iframe id="googleMap" title="Google Maps 路線地圖" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
     <p class="map-links"><a id="openGoogleMaps" href="#" target="_blank" rel="noopener noreferrer">在 Google Maps 開啟完整路線 ↗</a></p>
   </section>
@@ -211,7 +212,7 @@ function showGoogleMap() {
   mapPanel.hidden = false;
 
   if (points.length < 2) {
-    mapNote.textContent = '請至少填寫兩個地點（起點與終點），再按「儲存」顯示路線。';
+    mapNote.textContent = '請至少填寫兩個地點（起點與終點），再按「查詢」顯示路線。';
     mapFrame.removeAttribute('src');
     openLink.href = 'https://www.google.com/maps';
     mapPanel.scrollIntoView({behavior:'smooth', block:'start'});
@@ -303,7 +304,7 @@ const routeNameInput = document.getElementById('routeName');
 if (routeNameInput && !routeNameInput.value.trim()) { routeNameInput.value = defaultRouteNameFromLocalTime(); routeNameInput.classList.add('auto-generated-name'); }
 routeNameInput?.addEventListener('input', () => routeNameInput.classList.remove('auto-generated-name'));
 
-document.getElementById('saveRoutes').addEventListener('click',()=>{
+document.getElementById('saveRoutes').addEventListener('click',async()=>{
   try {
     const departureTime = normalizeDepartureTime(true);
     if (departureTime === null) return;
@@ -314,23 +315,26 @@ document.getElementById('saveRoutes').addEventListener('click',()=>{
       return;
     }
     const snapshot = JSON.parse(JSON.stringify(routes));
-    localStorage.setItem('customTransitRoutes', JSON.stringify({routes: snapshot, departureTime, title}));
-    // 路線名稱相同時更新原紀錄；名稱不同才新增紀錄。
-    const records = getJourneyRecords();
-    const existingIndex = records.findIndex(record => String(record.title || '').trim() === title);
-    const recordData = {title, departureTime, routes:snapshot, savedAt:new Date().toLocaleString('zh-TW',{hour12:false})};
-    if (existingIndex >= 0) {
-      records[existingIndex] = {...records[existingIndex], ...recordData};
-    } else {
-      records.unshift({id: Date.now(), ...recordData});
-    }
-    localStorage.setItem('customTransitJourneyRecords', JSON.stringify(records));
-    renderJourneyRecords();
+    const savedJourney = await requestJourneyApi('/api/journeys', {
+      method: 'POST',
+      body: JSON.stringify({title, departureTime, routes:snapshot})
+    });
+    routes = savedJourney.routes.map(route => ({...route, id:Number(route.id)}));
+    nextId = Math.max(0, ...routes.map(route => Number(route.id) || 0)) + 1;
+    localStorage.setItem('customTransitRoutes', JSON.stringify({routes, departureTime, title}));
+    await renderJourneyRecords();
     showJourneySummary(departureTime);
     showGoogleMap();
   } catch (error) {
-    alert('儲存失敗，請確認瀏覽器是否允許本機儲存。');
+    alert(`儲存失敗：${error.message}`);
   }
+});
+
+document.getElementById('queryRoutes').addEventListener('click',()=>{
+  const departureTime = normalizeDepartureTime(true);
+  if (departureTime === null) return;
+  showJourneySummary(departureTime);
+  showGoogleMap();
 });
 
 function durationMinutes(text) {
@@ -395,21 +399,84 @@ try {
 } catch (error) {}
 render();
 
-// 路線紀錄管理：每筆紀錄獨立保存，可載入編輯或刪除。
-function getJourneyRecords(){
-  try { const data=JSON.parse(localStorage.getItem('customTransitJourneyRecords')||'[]'); return Array.isArray(data)?data:[]; }
-  catch(e){ return []; }
+async function requestJourneyApi(url, options = {}) {
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+      }
+    });
+  } catch (error) {
+    throw new Error('無法連線到後端，請確認 app.py 已啟動。', {cause:error});
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (error) {
+    throw new Error('後端回應格式無效。', {cause:error});
+  }
+  if (!response.ok) {
+    throw new Error(data.error || `後端請求失敗（${response.status}）。`);
+  }
+  return data;
 }
+
+// 將同一個網站來源中舊版 localStorage 路線紀錄搬到後端資料庫一次。
+async function getJourneyRecords() {
+  const records = await requestJourneyApi('/api/journeys');
+  const migrationKey = 'customTransitJourneyRecordsMigratedToApi';
+  const legacyKey = 'customTransitJourneyRecords';
+  if (localStorage.getItem(migrationKey) === 'true') return records;
+
+  const legacyValue = localStorage.getItem(legacyKey);
+  if (legacyValue) {
+    let legacyRecords;
+    try {
+      legacyRecords = JSON.parse(legacyValue);
+    } catch (error) {
+      throw new Error('舊版路線紀錄格式無法讀取，原資料仍保留。', {cause:error});
+    }
+    if (!Array.isArray(legacyRecords)) {
+      throw new Error('舊版路線紀錄格式不正確，原資料仍保留。');
+    }
+
+    const knownTitles = new Set(records.map(record => String(record.title || '').trim()));
+    for (const record of legacyRecords) {
+      const title = String(record.title || '').trim();
+      if (!title || knownTitles.has(title)) continue;
+      await requestJourneyApi('/api/journeys', {
+        method: 'POST',
+        body: JSON.stringify({
+          title,
+          departureTime: record.departureTime || '09:00',
+          routes: Array.isArray(record.routes) ? record.routes : [],
+          savedAt: record.savedAt
+        })
+      });
+      knownTitles.add(title);
+    }
+  }
+
+  localStorage.setItem(migrationKey, 'true');
+  localStorage.removeItem(legacyKey);
+  return requestJourneyApi('/api/journeys');
+}
+
+// 路線紀錄改由 Flask API 存取，資料實際儲存在 routes.db。
 document.getElementById('selectAllRecords').addEventListener('change', event=>{
   document.querySelectorAll('#recordList .record-select').forEach(box=>{box.checked=event.target.checked;});
 });
 document.getElementById('deleteAllRecords').addEventListener('click',()=>{
-  const selected=[...document.querySelectorAll('#recordList .record-select:checked')].map(box=>box.dataset.recordId);
+  const selected=[...document.querySelectorAll('#recordList .record-select:checked')].map(box=>Number(box.dataset.recordId));
   if(!selected.length){alert('請先勾選要刪除的路線紀錄。');return;}
-  const selectedSet=new Set(selected);
-  const updated=getJourneyRecords().filter(record=>!selectedSet.has(String(record.id)));
-  localStorage.setItem('customTransitJourneyRecords',JSON.stringify(updated));
-  renderJourneyRecords();
+  requestJourneyApi('/api/journeys/delete-batch', {
+    method: 'POST',
+    body: JSON.stringify({ids:selected})
+  }).then(()=>renderJourneyRecords()).catch(error=>alert(`刪除失敗：${error.message}`));
 });
 
 let journeyRecordSort={key:'',direction:1};
@@ -426,11 +493,17 @@ document.querySelectorAll('.records-table-head .sort-header').forEach(button=>{
     renderJourneyRecords();
   });
 });
-function renderJourneyRecords(){
+async function renderJourneyRecords(){
   const list=document.getElementById('recordList');
   const count=document.getElementById('recordCount');
   if(!list||!count)return;
-  const records=getJourneyRecords();
+  let records;
+  try {
+    records=await getJourneyRecords();
+  } catch (error) {
+    alert(`無法載入路線紀錄：${error.message}`);
+    return;
+  }
   if(journeyRecordSort.key){
     const fieldValue=(record,key)=>{
       if(key==='origin')return (Array.isArray(record.routes)?record.routes:[]).find(r=>String(r.from||'').trim())?.from||'未填起點';
@@ -522,8 +595,7 @@ function switchWorkspace(which){
   document.getElementById('recordsTab').classList.toggle('active',!planner);
 }
 document.getElementById('plannerTab').addEventListener('click',()=>switchWorkspace('planner'));
-document.getElementById('recordsTab').addEventListener('click',()=>{renderJourneyRecords();switchWorkspace('records');});
-renderJourneyRecords();
+document.getElementById('recordsTab').addEventListener('click',()=>{switchWorkspace('records');renderJourneyRecords();});
 
 // 行程明細可收合至側邊，也可隨時展開。
 (() => {
