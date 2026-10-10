@@ -7,8 +7,8 @@ h1{font-size:27px;margin:0 0 8px}
 .subtitle{color:#687385;margin:0 0 22px;line-height:1.6}
 .panel{background:#fff;border:1px solid #dce2eb;border-radius:14px;padding:20px;box-shadow:0 4px 16px #1f29370a}
 .table-wrap{overflow-x:auto}
-table{border-collapse:separate;border-spacing:0;width:100%;min-width:850px;font-size:14px}
-th{background:#f0f3f8;color:#354052;font-size:14px;font-weight:700;text-align:left;padding:13px 10px;border-bottom:1px solid #dce2eb}\nth.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+table{border-collapse:separate;border-spacing:0;width:100%;min-width:850px;font-size:12px}
+th{background:#f0f3f8;color:#354052;font-size:12px;font-weight:700;text-align:left;padding:13px 10px;border-bottom:1px solid #dce2eb}\nth.sortable{cursor:pointer;user-select:none;white-space:nowrap}
 th.sortable:hover,th.sortable:focus{background:#e3eaf6;outline:none}
 .sort-indicator{display:inline-block;margin-left:3px;color:#64748b;font-size:12px}
 th.sortable[aria-sort="ascending"] .sort-indicator,
@@ -22,7 +22,7 @@ tbody tr.dragging{opacity:.4}
 tbody tr.drop-target{outline:2px dashed #4776d0;outline-offset:-3px}
 .drag-cell{width:64px;text-align:center;color:#7a8493;cursor:grab;user-select:none}
 .drag-handle{font-size:23px;display:inline-block;cursor:grab;line-height:1}
-.order{display:block;font-size:14px;margin-top:3px}
+.order{display:block;font-size:12px;margin-top:3px}
 input,select{font:inherit;width:100%;min-width:0;padding:10px 9px;border:1px solid #cbd3df;border-radius:8px;background:#fff;color:#222}
 input:focus,select:focus{outline:2px solid #c9d9ff;border-color:#4776d0}
 .mode{min-width:90px}
@@ -32,7 +32,7 @@ button{font:inherit;font-weight:600;border:0;border-radius:8px;padding:10px 15px
 button:focus-visible{outline:3px solid #9dbbff;outline-offset:2px}
 .primary{background:#2457c5;color:#fff}
 .secondary{background:#edf2fb;color:#254b91}
-.delete{background:#fff0f0;color:#b42323;padding:8px 10px;font-size:14px}
+.delete{background:#fff0f0;color:#b42323;padding:8px 10px;font-size:12px}
 button:disabled{opacity:.4;cursor:not-allowed}
 .hint{margin:17px 0 0;color:#687385;font-size:13px;line-height:1.6}
 @media(max-width:600px){body{padding:18px 10px}.panel{padding:12px}h1{font-size:23px}}
@@ -168,34 +168,34 @@ body{padding:0 18px 28px 208px}
 .records-heading .hint{margin:0;color:#64748b;font-size:14px}
 .records-delete-row{display:grid;grid-template-columns:24px minmax(130px,1.15fr) minmax(100px,.8fr) minmax(100px,1fr) minmax(100px,1fr) minmax(145px,1.25fr) 76px 76px;gap:8px;align-items:center;padding:12px 13px 8px;min-width:900px;background:#fff}
 .records-delete-row span:first-child{display:flex;align-items:center;justify-content:center}
-.records-delete-row button{width:max-content;white-space:nowrap;font-size:14px;padding:7px 11px}
+.records-delete-row button{width:max-content;white-space:nowrap;font-size:12px;padding:7px 11px}
 .records-table-wrap{width:100%;overflow-x:auto}
-.records-table-head{display:grid;grid-template-columns:24px minmax(130px,1.15fr) minmax(100px,.8fr) minmax(100px,1fr) minmax(100px,1fr) minmax(145px,1.25fr) 76px 76px;gap:8px;align-items:center;padding:15px 13px;background:#f1f4f8;border:1px solid #dce2eb;border-radius:0;color:#1f2937;font-size:14px;font-weight:700;margin-bottom:0;min-width:900px}
+.records-table-head{display:grid;grid-template-columns:24px minmax(130px,1.15fr) minmax(100px,.8fr) minmax(100px,1fr) minmax(100px,1fr) minmax(145px,1.25fr) 76px 76px;gap:8px;align-items:center;padding:15px 13px;background:#f1f4f8;border:1px solid #dce2eb;border-radius:0;color:#1f2937;font-size:12px;font-weight:700;margin-bottom:0;min-width:900px}
 .record-select,.select-all-records{width:14px;height:14px;cursor:pointer;flex-shrink:0;accent-color:#2457c5}
 .record-item .record-select{margin:0 2px 0 0}
-.record-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:7px}
-.record-item{display:grid;grid-template-columns:24px minmax(130px,1.15fr) minmax(100px,.8fr) minmax(100px,1fr) minmax(100px,1fr) minmax(145px,1.25fr) 76px 76px;align-items:center;column-gap:8px;row-gap:10px;padding:10px 12px;border:1px solid #dce2eb;border-top:0;border-radius:0;background:#fff;min-width:900px}
+.record-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:4px}
+.record-item{display:grid;grid-template-columns:24px minmax(130px,1.15fr) minmax(100px,.8fr) minmax(100px,1fr) minmax(100px,1fr) minmax(145px,1.25fr) 76px 76px;align-items:center;column-gap:8px;row-gap:6px;padding:8px 12px;border:1px solid #dce2eb;border-top:0;border-radius:0;background:#fff;min-width:900px}
 .record-main{flex:1;min-width:0}
-.record-title{font-weight:700;color:#1f2937;overflow-wrap:anywhere;font-size:14px}
-.record-meta{font-size:14px;color:#64748b;margin-top:3px;line-height:1.5}
+.record-title{font-weight:700;color:#1f2937;overflow-wrap:anywhere;font-size:12px}
+.record-meta{font-size:12px;color:#64748b;margin-top:3px;line-height:1.5}
 .record-actions{display:flex;align-items:stretch;gap:8px;flex-shrink:0}
 .record-action-col{display:flex;flex-direction:column;align-items:stretch;min-width:54px}
-.record-action-col button{font-size:14px;padding:10px 8px;width:100%}
+.record-action-col button{font-size:12px;padding:10px 8px;width:100%}
 .record-empty{padding:28px 18px;border:1px dashed #cbd5e1;border-radius:10px;color:#64748b;text-align:center;background:#fff}
-.record-delete{background:#fff0f0;color:#b42323}
+.record-delete{background:transparent;color:#b42323;border:0;box-shadow:none}
 .record-detail{width:100%;flex-basis:100%;border-top:1px solid #e5eaf2;margin-top:10px;padding-top:14px}
 .record-item-top{display:contents}
-.record-data-cell{min-width:0;overflow-wrap:anywhere;font-size:14px;color:#111827}
+.record-data-cell{min-width:0;overflow-wrap:anywhere;font-size:12px;color:#111827;border-right:1px solid var(--ui-border);padding-right:8px}
 .records-table-head span:first-child{display:flex;align-items:center;justify-content:center}
 .records-table-head .sort-header{border:0;background:transparent;color:inherit;font:inherit;text-align:left;padding:0;cursor:pointer;width:100%;display:flex;align-items:center;gap:4px}
 .records-table-head .sort-header:hover{color:#2457c5}
 .records-table-head .sort-arrow{font-size:12px;color:#2457c5}
 .record-main{border:1px solid #dce2eb;border-radius:12px;background:#fff;padding:14px 16px;min-height:66px;display:flex;align-items:center}
-.record-meta{font-size:14px;color:#64748b;margin-top:0;line-height:1.5;overflow-wrap:anywhere}
+.record-meta{font-size:12px;color:#64748b;margin-top:0;line-height:1.5;overflow-wrap:anywhere}
 .record-action-col{display:flex;flex-direction:column;align-items:stretch;justify-content:center;min-width:0}
-.record-action-col button{font-size:14px;padding:10px 8px;width:100%;border-radius:10px}
+.record-action-col button{font-size:12px;padding:7px 8px;width:100%;border-radius:10px}
 .record-detail{grid-column:2 / -1;width:100%;flex-basis:auto;border-top:1px solid #e5eaf2;margin-top:0;padding-top:14px}
-@media(max-width:700px){.record-item{grid-template-columns:14px minmax(0,1fr) 64px 64px;column-gap:6px}.record-main{padding:10px}.record-action-col button{font-size:14px;padding:10px 5px}}
+@media(max-width:700px){.record-item{grid-template-columns:14px minmax(0,1fr) 64px 64px;column-gap:6px}.record-main{padding:10px}.record-action-col button{font-size:12px;padding:6px 5px}}
 .record-detail[hidden]{display:none!important}
 .record-detail-layout{display:grid;grid-template-columns:minmax(260px,.8fr) minmax(300px,1.2fr);gap:14px;align-items:start}
 .record-detail-summary{border:1px solid #d8e3f4;border-radius:10px;padding:14px;background:#fff}
@@ -208,7 +208,7 @@ body{padding:0 18px 28px 208px}
 .record-detail-map a{display:inline-block;margin-top:8px;color:#2457c5;font-weight:600;text-decoration:none}
 @media(max-width:850px){.record-detail-layout{grid-template-columns:1fr}.record-detail-map iframe{height:300px}}
 #routePlannerView{display:block}
-@media(max-width:700px){body{padding:0 10px 20px 150px}.side-tabs{width:138px;padding:18px 8px}.side-tabs h2{font-size:15px;margin-left:4px}.side-tab{font-size:13px;padding:10px 7px}.record-item{grid-template-columns:14px minmax(0,1fr) 52px 52px;column-gap:6px}.record-actions{gap:5px}.record-action-col button{padding:10px 4px}}
+@media(max-width:700px){body{padding:0 10px 20px 150px}.side-tabs{width:138px;padding:18px 8px}.side-tabs h2{font-size:15px;margin-left:4px}.side-tab{font-size:13px;padding:10px 7px}.record-item{grid-template-columns:14px minmax(0,1fr) 52px 52px;column-gap:6px}.record-actions{gap:5px}.record-action-col button{padding:6px 4px}}
 
 
 /* 統一路線規劃與路線紀錄兩個側邊頁籤的字形、顏色與大小 */
@@ -252,8 +252,8 @@ tbody tr:last-child td{border-bottom:0}
 tbody tr:hover{background:#fafbfd}
 tbody input,tbody select{min-height:42px}
 .records-heading{padding:0;background:transparent;border:0;border-radius:0;margin-bottom:22px}
-.records-table-head{background:#60788b3f!important;border-color:var(--ui-border)!important;color:#1f2937!important;font-size:14px!important;padding:15px 13px!important}
-.record-item{background:var(--ui-bg);border-color:#e9edf3!important;padding:14px!important;transition:background .15s ease}
+.records-table-head{background:#60788b3f!important;border-color:var(--ui-border)!important;color:#1f2937!important;font-size:12px!important;padding:15px 13px!important}
+.record-item{background:#fff;border-color:#e9edf3!important;padding:8px 12px!important;transition:background .15s ease}
 .record-item:hover{background:#fafbfd}
 .record-item,.record-detail{border-left:1px solid var(--ui-border);border-right:1px solid var(--ui-border)}
 .record-list{border-bottom:1px solid var(--ui-border);border-radius:0 0 14px 14px;overflow:hidden}
