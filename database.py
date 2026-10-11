@@ -1,57 +1,42 @@
   
-import sqlite3
-from pathlib import Path
+import os
+import mysql.connector
 from datetime import datetime
 
 
-# 專案根目錄與資料庫路徑
-BASE_DIR = Path(__file__).resolve().parent
-INSTANCE_DIR = BASE_DIR / "instance"
-DATABASE_PATH = INSTANCE_DIR / "routes.db"
-
-
 def get_connection():
-    """建立資料庫連線。"""
-    INSTANCE_DIR.mkdir(parents=True, exist_ok=True)
+    """建立 MySQL 連線。"""
+    password = os.getenv("MYSQL_PASSWORD")
+    if not password:
+        raise RuntimeError("請先設定 MYSQL_PASSWORD 環境變數。")
 
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-
-    return conn
+    return mysql.connector.connect(
+        host=os.getenv("MYSQL_HOST", "localhost"),
+        port=int(os.getenv("MYSQL_PORT", "3306")),
+        user=os.getenv("MYSQL_USER", "root"),
+        password=password,
+        database="tran",
+        charset="utf8mb4",
+    )
 
 
 def init_db():
-    """建立資料表；資料表已存在時不會重複建立。"""
-    with get_connection() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS journeys (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL UNIQUE,
-                departure_time TEXT NOT NULL DEFAULT '09:00',
-                saved_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-        """)
+    """確認 MySQL 資料庫已建立必要資料表。"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        for table_name in ("records", "route"):
+            cursor.execute(f"SELECT 1 FROM `{table_name}` LIMIT 0")
+            cursor.fetchall()
+    except mysql.connector.Error as error:
+        raise RuntimeError(
+            "請確認 MySQL 的 tran 資料庫已建立 records 和 route 資料表。"
+        ) from error
+    finally:
+        cursor.close()
+        conn.close()
 
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS route_legs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                journey_id INTEGER NOT NULL,
-                position INTEGER NOT NULL,
-                origin TEXT NOT NULL DEFAULT '',
-                destination TEXT NOT NULL DEFAULT '',
-                mode TEXT NOT NULL DEFAULT '預設',
-                travel_time TEXT NOT NULL DEFAULT '',
-                stay_time TEXT NOT NULL DEFAULT '',
-                FOREIGN KEY (journey_id)
-                    REFERENCES journeys(id)
-                    ON DELETE CASCADE,
-                UNIQUE (journey_id, position)
-            )
-        """)
-
-    print(f"資料庫初始化完成：{DATABASE_PATH}")
+    print("MySQL 資料表確認完成：tran")
 
 
 def save_journey(title, departure_time, routes, saved_at=None):
@@ -85,50 +70,54 @@ def save_journey(title, departure_time, routes, saved_at=None):
     )
     saved_at = str(saved_at or "").strip() or now
 
-    with get_connection() as conn:
-        existing = conn.execute(
-            "SELECT id FROM journeys WHERE title = ?",
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            "SELECT id FROM `records` WHERE title = %s",
             (title,)
-        ).fetchone()
+        )
+        existing = cursor.fetchone()
 
         if existing:
-            journey_id = existing["id"]
-            existing_route_rows = conn.execute("""
+            records_id = existing["id"]
+            cursor.execute("""
                 SELECT id
-                FROM route_legs
-                WHERE journey_id = ?
-                ORDER BY position
-            """, (journey_id,)).fetchall()
+                FROM `route`
+                WHERE records_id = %s
+                ORDER BY `position`
+            """, (records_id,))
+            existing_route_rows = cursor.fetchall()
             existing_route_ids = {
                 row["id"] for row in existing_route_rows
             }
             retained_route_ids = set()
 
-            conn.execute("""
-                UPDATE journeys
-                SET departure_time = ?, updated_at = ?
-                WHERE id = ?
-            """, (departure_time, now, journey_id))
+            cursor.execute("""
+                UPDATE `records`
+                SET departure_time = %s, updated_at = %s
+                WHERE id = %s
+            """, (departure_time, now, records_id))
 
-            conn.execute("""
-                UPDATE route_legs
-                SET position = -id
-                WHERE journey_id = ?
-            """, (journey_id,))
+            cursor.execute("""
+                UPDATE `route`
+                SET `position` = -id
+                WHERE records_id = %s
+            """, (records_id,))
 
         else:
             existing_route_rows = []
             existing_route_ids = set()
             retained_route_ids = set()
 
-            cursor = conn.execute("""
-                INSERT INTO journeys (
+            cursor.execute("""
+                INSERT INTO `records` (
                     title, departure_time, saved_at, updated_at
                 )
-                VALUES (?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s)
             """, (title, departure_time, saved_at, now))
 
-            journey_id = cursor.lastrowid
+            records_id = cursor.lastrowid
 
         has_known_route_id = any(
             route_id in existing_route_ids
@@ -158,50 +147,62 @@ def save_journey(title, departure_time, routes, saved_at=None):
                 if route_id in retained_route_ids:
                     raise ValueError("路段 ID 不可重複。")
 
-                conn.execute("""
-                    UPDATE route_legs
-                    SET position = ?, origin = ?, destination = ?,
-                        mode = ?, travel_time = ?, stay_time = ?
-                    WHERE id = ? AND journey_id = ?
-                """, (*route_values, route_id, journey_id))
+                cursor.execute("""
+                    UPDATE `route`
+                    SET `position` = %s, origin = %s, destination = %s,
+                        mode = %s, travel_time = %s, stay_time = %s
+                    WHERE id = %s AND records_id = %s
+                """, (*route_values, route_id, records_id))
                 retained_route_ids.add(route_id)
             else:
-                conn.execute("""
-                    INSERT INTO route_legs (
-                        journey_id, position, origin, destination,
+                cursor.execute("""
+                    INSERT INTO `route` (
+                        records_id, `position`, origin, destination,
                         mode, travel_time, stay_time
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (journey_id, *route_values))
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (records_id, *route_values))
 
         for row in existing_route_rows:
             if row["id"] not in retained_route_ids:
-                conn.execute(
-                    "DELETE FROM route_legs WHERE id = ?",
+                cursor.execute(
+                    "DELETE FROM `route` WHERE id = %s",
                     (row["id"],)
                 )
 
-    return get_journey(journey_id)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+    return get_journey(records_id)
 
 
-def get_journey(journey_id):
+def get_journey(records_id):
     """依照資料庫 ID 取得單筆路線及其所有路段。"""
-    with get_connection() as conn:
-        journey = conn.execute("""
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
             SELECT *
-            FROM journeys
-            WHERE id = ?
-        """, (journey_id,)).fetchone()
+            FROM `records`
+            WHERE id = %s
+        """, (records_id,))
+        journey = cursor.fetchone()
 
         if journey is None:
             return None
 
-        routes = conn.execute("""
+        cursor.execute("""
             SELECT *
-            FROM route_legs
-            WHERE journey_id = ?
-            ORDER BY position
-        """, (journey_id,)).fetchall()
+            FROM `route`
+            WHERE records_id = %s
+            ORDER BY `position`
+        """, (records_id,))
+        routes = cursor.fetchall()
 
         result = dict(journey)
         result["routes"] = [
@@ -217,16 +218,25 @@ def get_journey(journey_id):
         ]
 
         return result
+    finally:
+        cursor.close()
+        conn.close()
 
 
 def get_all_journeys():
     """取得所有路線紀錄，最新更新的排在前面。"""
-    with get_connection() as conn:
-        rows = conn.execute("""
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        cursor.execute("""
             SELECT id
-            FROM journeys
+            FROM `records`
             ORDER BY updated_at DESC, id DESC
-        """).fetchall()
+        """)
+        rows = cursor.fetchall()
+    finally:
+        cursor.close()
+        conn.close()
 
     return [
         get_journey(row["id"])
@@ -234,33 +244,48 @@ def get_all_journeys():
     ]
 
 
-def delete_journey(journey_id):
+def delete_journey(records_id):
     """刪除一筆路線及其所屬路段。"""
-    with get_connection() as conn:
-        cursor = conn.execute(
-            "DELETE FROM journeys WHERE id = ?",
-            (journey_id,)
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "DELETE FROM `records` WHERE id = %s",
+            (records_id,)
         )
-
+        conn.commit()
         return cursor.rowcount > 0
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
 
 
-def delete_journeys(journey_ids):
+def delete_journeys(records_ids):
     """批次刪除多筆路線及其所屬路段。"""
-    ids = list(dict.fromkeys(journey_ids))
+    ids = list(dict.fromkeys(records_ids))
 
     if not ids:
         return 0
 
-    with get_connection() as conn:
-        placeholders = ",".join("?" for _ in ids)
-
-        cursor = conn.execute(
-            f"DELETE FROM journeys WHERE id IN ({placeholders})",
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        placeholders = ",".join("%s" for _ in ids)
+        cursor.execute(
+            f"DELETE FROM `records` WHERE id IN ({placeholders})",
             ids
         )
-
+        conn.commit()
         return cursor.rowcount
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
 
 
 if __name__ == "__main__":

@@ -466,7 +466,7 @@ async function getJourneyRecords() {
   return requestJourneyApi('/api/journeys');
 }
 
-// 路線紀錄改由 Flask API 存取，資料實際儲存在 routes.db。
+// 路線紀錄改由 Flask API 存取，資料實際儲存在 MySQL。
 document.getElementById('selectAllRecords').addEventListener('change', event=>{
   document.querySelectorAll('#recordList .record-select').forEach(box=>{box.checked=event.target.checked;});
 });
