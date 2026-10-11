@@ -11,7 +11,8 @@
   <button type="button" id="toggleSidebar" aria-label="收合左側導覽列" title="收合左側導覽列">◀</button>
   <h2>自訂交通</h2>
   <button class="side-tab active" id="plannerTab" type="button"><span>⌖</span> 路線規劃</button>
-  <button class="side-tab" id="recordsTab" type="button"><span>☷</span> 路線紀錄</button>
+  <button class="side-tab" id="recordsTab" type="button"><span>⌖</span> 路線紀錄</button>
+  <button class="side-tab" id="settingsTab" type="button"><span>⚙</span> 設定</button>
 </nav>
 <div id="routePlannerView" class="workspace-view">
 <main>
@@ -50,7 +51,7 @@
     <div class="actions">
       <button class="primary" id="addRoute" type="button">＋ 新增路段</button>
       <button class="secondary" id="queryRoutes" type="button">查詢</button>
-      <button class="secondary" id="clearRoutes" type="button">清除</button>
+      <button class="secondary" id="clearRoutes" type="button">全部刪除</button>
       <button class="secondary" id="saveRoutes" type="button">儲存</button>
     </div>
     
@@ -70,14 +71,26 @@
   <section class="map-panel" id="mapPanel" hidden>
     <h2>Google Maps 路線</h2>
     <p class="map-note" id="mapNote">已依照目前輸入的路段顯示路線。</p>
-    <iframe id="googleMap" title="Google Maps 路線地圖" loading="lazy" referrerpolicy="no-referrer-when-downgrade" allowfullscreen></iframe>
-    <p class="map-links"><a id="openGoogleMaps" href="#" target="_blank" rel="noopener noreferrer">在 Google Maps 開啟完整路線 ↗</a></p>
+    <div id="googleMapsSegments" class="map-segments"></div>
   </section>
 </div>
 </div>
 <section id="recordsView" class="workspace-view" hidden>
   <div class="records-heading"><div class="records-heading-top"><h2>路線紀錄</h2><span id="recordCount" class="hint">共 0 筆紀錄</span></div></div>
-  <div class="records-table-wrap"><div class="records-delete-row"><span><button type="button" id="deleteAllRecords" class="record-delete">刪除</button></span></div><div class="records-table-head"><span><input type="checkbox" id="selectAllRecords" class="select-all-records" aria-label="全選或取消全選路線紀錄" title="全選／取消全選"></span><span><button type="button" class="sort-header" data-sort="title">路線名稱 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="departureTime">出發時間 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="origin">起點 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="destination">終點 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="savedAt">儲存時間 <span class="sort-arrow"></span></button></span><span></span><span></span></div><ul class="record-list" id="recordList"></ul></div>
+  <div class="records-table-wrap"><div class="records-delete-row"><span class="records-select-spacer"></span><button type="button" id="deleteAllRecords" class="record-delete">刪除</button></div><div class="records-table-header-row"><span class="records-select-head"><input type="checkbox" id="selectAllRecords" class="select-all-records" aria-label="全選或取消全選路線紀錄" title="全選／取消全選"></span><div class="records-table-head"><span><button type="button" class="sort-header" data-sort="title">路線名稱 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="departureTime">出發時間 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="origin">起點 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="destination">終點 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="savedAt">儲存時間 <span class="sort-arrow"></span></button></span><span></span><span></span></div></div><ul class="record-list" id="recordList"></ul></div>
+</section>
+<section id="settingsView" class="workspace-view" hidden>
+  <h2>設定</h2>
+  <section class="panel settings-panel" aria-labelledby="placesSettingsHeading">
+    <h3 id="placesSettingsHeading">地點自動完成</h3>
+    <div id="placesControls">
+      <label for="placesApiToggle">
+        <input id="placesApiToggle" type="checkbox">
+        使用 Google 地點自動完成
+      </label>
+      <span id="placesApiStatus" role="status">目前關閉，起點與終點可手動輸入。</span>
+    </div>
+  </section>
 </section>
 <script>
 // 左側自訂交通導覽列收合／展開
@@ -111,12 +124,96 @@ let dragId = null;
 const tbody = document.getElementById('routeRows');
 const modes = ['預設','捷運','公車','火車','ubike','步行'];
 
+const placesApiToggle = document.getElementById('placesApiToggle');
+const placesApiStatus = document.getElementById('placesApiStatus');
+const placesTimers = new WeakMap();
+const placesLastInput = new WeakMap();
+
+async function refreshPlacesStatus() {
+  try {
+    const response=await fetch('/api/places/status');
+    const s=await response.json();
+    placesApiToggle.checked=Boolean(s.enabled);
+    placesApiToggle.disabled=!s.configured||s.count>=s.limit;
+    placesApiStatus.textContent=!s.configured?'尚未設定 API 金鑰；目前只能手動輸入。':
+      s.count>=s.limit?`本月已使用 ${s.count}/${s.limit} 次，已達上限。`:
+      s.enabled?`已開啟｜本月使用 ${s.count}/${s.limit} 次（${s.percent}%）`:
+      `目前關閉｜本月使用 ${s.count}/${s.limit} 次；可手動輸入。`;
+  } catch {
+    placesApiToggle.checked=false;
+    placesApiStatus.textContent='無法取得 API 狀態，請確認 Flask 正在執行。';
+  }
+}
+placesApiToggle.addEventListener('change',async()=>{
+  const enabled=placesApiToggle.checked; placesApiToggle.disabled=true;
+  try {
+    const r=await fetch('/api/places/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
+    const d=await r.json(); if(!r.ok)throw new Error(d.error||'切換失敗');
+  } catch(e){alert(e.message);}
+  await refreshPlacesStatus();
+});
+async function fetchPlaceSuggestions(input) {
+  const menu=input._placesMenu;
+  if(!menu||!placesApiToggle.checked)return;
+  const query=input.value.trim();
+  if(query.length<2){menu.hidden=true;return;}
+  if(placesLastInput.get(input)===query)return;
+  placesLastInput.set(input,query);
+  try {
+    const r=await fetch('/api/places/autocomplete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:query})});
+    const d=await r.json();
+    if(!r.ok){
+      if(d.disabled){placesApiToggle.checked=false;await refreshPlacesStatus();}
+      menu.replaceChildren();const note=document.createElement('div');note.textContent=d.error||'無法取得地點建議';
+      note.style.cssText='padding:10px;color:#64748b;font-size:13px';menu.appendChild(note);menu.hidden=false;return;
+    }
+    menu.replaceChildren();
+    (d.suggestions||[]).forEach(item=>{
+      const option=document.createElement('button');option.type='button';option.textContent=item.text;
+      option.style.cssText='display:block;width:100%;padding:10px;text-align:left;border:0;background:white;cursor:pointer';
+      option.addEventListener('mousedown',e=>e.preventDefault());
+      option.addEventListener('click',()=>{
+        input.value=item.text;const row=input.closest('tr');
+        const route=routes.find(r=>r.id===Number(row.dataset.id));if(route)route[input.className]=item.text;
+        menu.hidden=true;
+      });
+      menu.appendChild(option);
+    });
+    menu.hidden=!(d.suggestions||[]).length;await refreshPlacesStatus();
+  } catch {menu.hidden=true;}
+}
+function schedulePlaceSuggestions(input) {
+  clearTimeout(placesTimers.get(input));placesLastInput.delete(input);
+  placesTimers.set(input,setTimeout(()=>fetchPlaceSuggestions(input),450));
+}
+refreshPlacesStatus();
+
+
 function createInput(value, cls, placeholder='') {
   const input=document.createElement('input');
   input.value=value;
   input.className=cls;
   input.placeholder=placeholder;
-  input.addEventListener('input',()=>{const row=input.closest('tr');const route=routes.find(r=>r.id===Number(row.dataset.id));if(route)route[cls]=input.value;});
+  input.autocomplete='off';
+  input.addEventListener('input',()=>{
+    const row=input.closest('tr');
+    const route=routes.find(r=>r.id===Number(row.dataset.id));
+    if(route)route[cls]=input.value;
+    if ((cls==='from'||cls==='to') && placesApiToggle.checked) schedulePlaceSuggestions(input);
+  });
+  if(cls==='from'||cls==='to'){
+    const wrapper=document.createElement('div');
+    wrapper.style.position='relative';
+    wrapper.appendChild(input);
+    const menu=document.createElement('div');
+    Object.assign(menu.style,{position:'absolute',left:'0',right:'0',top:'100%',zIndex:'1000',background:'#fff',border:'1px solid #cbd5e1',borderRadius:'8px',boxShadow:'0 4px 12px #0002',maxHeight:'240px',overflowY:'auto'});
+    menu.hidden=true;
+    wrapper.appendChild(menu);
+    input._placesMenu=menu;
+    input.addEventListener('blur',()=>setTimeout(()=>{menu.hidden=true;},180));
+    input.addEventListener('focus',()=>{if(placesApiToggle.checked&&input.value.trim().length>=2)schedulePlaceSuggestions(input);});
+    return wrapper;
+  }
   return input;
 }
 // 點擊資料欄位表頭排序；同一欄再次點擊會切換升冪／降冪。
@@ -188,55 +285,66 @@ function render(){
 }
 document.getElementById('addRoute').addEventListener('click',()=>{routes.push({id:nextId++,from:'',to:'',mode:'預設',time:'',stay:''});render();});
 document.getElementById('clearRoutes').addEventListener('click',()=>{
-  if(!confirm('確定要清除所有路段嗎？')) return;
+  if(!confirm('確定要刪除所有路段嗎？')) return;
   routes=[];
   render();
 });
-function showGoogleMap() {
-  const validRoutes = routes.map(r => ({
-    from: String(r.from || '').trim(),
-    to: String(r.to || '').trim(),
-    mode: String(r.mode || '').trim()
-  })).filter(r => r.from || r.to);
-
-  const points = [];
-  validRoutes.forEach(r => {
-    if (r.from && (!points.length || points[points.length - 1] !== r.from)) points.push(r.from);
-    if (r.to && (!points.length || points[points.length - 1] !== r.to)) points.push(r.to);
+function renderGoogleMapsSegments(container, routeList, titlePrefix = '路段') {
+  const validRoutes = routeList
+    .map((route, index) => ({
+      id: route.id ?? index + 1,
+      from: String(route.from || '').trim(),
+      to: String(route.to || '').trim()
+    }))
+    .filter(route => route.from && route.to);
+  container.replaceChildren();
+  validRoutes.forEach(route => {
+    const section = document.createElement('section');
+    section.className = 'map-segment';
+    const heading = document.createElement('h3');
+    heading.textContent = `${titlePrefix} ID ${route.id}：${route.from} → ${route.to}`;
+    const iframe = document.createElement('iframe');
+    iframe.title = `Google Maps ${titlePrefix} ID ${route.id}`;
+    iframe.loading = 'lazy';
+    iframe.referrerPolicy = 'no-referrer-when-downgrade';
+    iframe.allowFullscreen = true;
+    iframe.src = 'https://www.google.com/maps?output=embed&' + new URLSearchParams({
+      q: `${route.from} to ${route.to}`
+    }).toString();
+    const link = document.createElement('a');
+    const params = new URLSearchParams({
+      api: '1',
+      origin: route.from,
+      destination: route.to,
+      travelmode: 'transit'
+    });
+    link.href = 'https://www.google.com/maps/dir/?' + params.toString();
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = `在 Google Maps 開啟此路段 ↗`;
+    section.append(heading, iframe, link);
+    container.appendChild(section);
   });
+  return {
+    displayed: validRoutes.length,
+    skipped: routeList.length - validRoutes.length
+  };
+}
 
+function showGoogleMap() {
   const mapPanel = document.getElementById('mapPanel');
-  const mapFrame = document.getElementById('googleMap');
+  const mapsSegments = document.getElementById('googleMapsSegments');
   const mapNote = document.getElementById('mapNote');
-  const openLink = document.getElementById('openGoogleMaps');
   mapPanel.hidden = false;
 
-  if (points.length < 2) {
+  const mapResult = renderGoogleMapsSegments(mapsSegments, routes);
+  if (!mapResult.displayed) {
     mapNote.textContent = '請至少填寫兩個地點（起點與終點），再按「查詢」顯示路線。';
-    mapFrame.removeAttribute('src');
-    openLink.href = 'https://www.google.com/maps';
     mapPanel.scrollIntoView({behavior:'smooth', block:'start'});
     return;
   }
 
-  // Embed a directions search using the first and last stop, with intermediate stops as waypoints.
-  const origin = points[0];
-  const destination = points[points.length - 1];
-  const waypoints = points.slice(1, -1);
-  const params = new URLSearchParams({
-    api: '1',
-    origin,
-    destination,
-    travelmode: 'transit'
-  });
-  if (waypoints.length) params.set('waypoints', waypoints.join('|'));
-  const mapUrl = 'https://www.google.com/maps/dir/?' + params.toString();
-  mapFrame.src = 'https://www.google.com/maps?output=embed&' + new URLSearchParams({
-    q: points.join(' to ')
-  }).toString();
-  // Use a directions URL as the reliable clickable full-route link.
-  openLink.href = mapUrl;
-  mapNote.textContent = `路線順序：${points.join(' → ')}。地圖由 Google Maps 提供；各段交通工具可能會由 Google Maps 重新規劃。`;
+  mapNote.textContent = `每個 route ID 各自顯示一張地圖。${mapResult.skipped ? `另有 ${mapResult.skipped} 筆缺少起點或終點，未顯示。` : ''} 地圖由 Google Maps 提供；交通工具可能會由 Google Maps 重新規劃。`;
   mapPanel.scrollIntoView({behavior:'smooth', block:'start'});
 }
 
@@ -522,6 +630,7 @@ async function renderJourneyRecords(){
   records.forEach(record=>{
     const li=document.createElement('li');li.className='record-item';
     const top=document.createElement('div');top.className='record-item-top';
+    const rowMain=document.createElement('div');rowMain.className='record-row-main';
     const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.className='record-select';checkbox.dataset.recordId=String(record.id);checkbox.setAttribute('aria-label',`勾選路線 ${record.title||'未命名行程'}`);
     checkbox.addEventListener('change',()=>{
       const all=[...document.querySelectorAll('#recordList .record-select')];
@@ -532,9 +641,8 @@ async function renderJourneyRecords(){
     const origin=savedRoutes.find(r=>String(r.from||'').trim())?.from||'未填起點';
     const destination=[...savedRoutes].reverse().find(r=>String(r.to||'').trim())?.to||'未填終點';
     const values=[record.title||'未命名行程',record.departureTime||'未設定',origin,destination,record.savedAt||'未知'];
-    const main=document.createElement('div');main.className='record-main';main.style.display='contents';
-    values.forEach(value=>{const cell=document.createElement('div');cell.className='record-data-cell';cell.textContent=value;main.append(cell);});
-    const expandCol=document.createElement('div');expandCol.className='record-action-col';
+    values.forEach(value=>{const cell=document.createElement('div');cell.className='record-data-cell';cell.textContent=value;rowMain.append(cell);});
+    const rowActions=document.createElement('div');rowActions.className='record-row-actions';
     const expand=document.createElement('button');expand.type='button';expand.className='secondary';expand.textContent='展開';
     const detail=document.createElement('div');detail.className='record-detail';detail.hidden=true;
     expand.addEventListener('click',()=>{
@@ -543,8 +651,7 @@ async function renderJourneyRecords(){
       expand.textContent=opening?'收合':'展開';
       if(opening) renderRecordDetail(detail,record);
     });
-    expandCol.append(expand);
-    const editCol=document.createElement('div');editCol.className='record-action-col';
+    rowActions.append(expand);
     const load=document.createElement('button');load.type='button';load.className='secondary';load.textContent='編輯';
     load.addEventListener('click',()=>{
       routes=(Array.isArray(record.routes)?record.routes:[]).map(r=>({...r, id:Number(r.id)||nextId++}));
@@ -558,8 +665,9 @@ async function renderJourneyRecords(){
       switchWorkspace('planner');
       window.scrollTo({top:0,behavior:'smooth'});
     });
-    editCol.append(load);
-    top.append(checkbox,main,expandCol,editCol);li.append(top,detail);list.append(li);
+    rowActions.append(load);
+    rowMain.append(rowActions);
+    top.append(checkbox,rowMain);li.append(top,detail);list.append(li);
   });
 }
 function renderRecordDetail(container,record){
@@ -580,22 +688,26 @@ function renderRecordDetail(container,record){
   let clock=String(record.departureTime||'09:00');let current=Number(clock.slice(0,2))*60+Number(clock.slice(3,5));
   data.forEach(({r,travel,stay},i)=>{const start=fmt(current);current+=travel+stay;const end=fmt(current);const line=document.createElement('div');line.className='record-detail-leg';line.textContent=`${start}–${end}｜${i+1}. ${r.from||'未填起點'} → ${r.to||'未填終點'}｜${r.mode||'未選交通工具'}｜行程 ${travel} 分鐘｜停留 ${stay} 分鐘`;summary.append(line);});
   const map=document.createElement('section');map.className='record-detail-map';const mapHeading=document.createElement('h3');mapHeading.textContent='Google Maps';map.append(mapHeading);
-  const points=[];savedRoutes.forEach(r=>{const from=String(r.from||'').trim(),to=String(r.to||'').trim();if(from&&points.at(-1)!==from)points.push(from);if(to&&points.at(-1)!==to)points.push(to);});
-  const iframe=document.createElement('iframe');iframe.title='已儲存行程地圖（查閱模式）';iframe.loading='lazy';iframe.referrerPolicy='no-referrer-when-downgrade';iframe.allowFullscreen=true;
-  const link=document.createElement('a');link.target='_blank';link.rel='noopener noreferrer';link.textContent='在 Google Maps 開啟完整路線 ↗';
-  if(points.length>=2){iframe.src='https://www.google.com/maps?output=embed&'+new URLSearchParams({q:points.join(' to ')}).toString();const params=new URLSearchParams({api:'1',origin:points[0],destination:points[points.length-1],travelmode:'transit'});if(points.length>2)params.set('waypoints',points.slice(1,-1).join('|'));link.href='https://www.google.com/maps/dir/?'+params.toString();}
-  else{iframe.hidden=true;const note=document.createElement('p');note.textContent='這筆紀錄尚未有足夠的起點與終點可顯示地圖。';map.append(note);link.href='https://www.google.com/maps';}
-  map.append(iframe,link);layout.append(summary,map);container.replaceChildren(layout);
+  const mapSegments=document.createElement('div');mapSegments.className='map-segments';
+  const mapResult=renderGoogleMapsSegments(mapSegments,savedRoutes,'route');
+  if(!mapResult.displayed){const note=document.createElement('p');note.textContent='這筆紀錄尚未有足夠的起點與終點可顯示地圖。';map.append(note);}
+  else if(mapResult.skipped){const note=document.createElement('p');note.textContent=`另有 ${mapResult.skipped} 筆缺少起點或終點，未顯示地圖。`;map.append(note);}
+  map.append(mapSegments);layout.append(summary,map);container.replaceChildren(layout);
 }
 function switchWorkspace(which){
-  const planner=which==='planner';
-  document.getElementById('routePlannerView').hidden=!planner;
-  document.getElementById('recordsView').hidden=planner;
-  document.getElementById('plannerTab').classList.toggle('active',planner);
-  document.getElementById('recordsTab').classList.toggle('active',!planner);
+  const views = {
+    planner: ['routePlannerView', 'plannerTab'],
+    records: ['recordsView', 'recordsTab'],
+    settings: ['settingsView', 'settingsTab'],
+  };
+  Object.entries(views).forEach(([name, [viewId, tabId]]) => {
+    document.getElementById(viewId).hidden = name !== which;
+    document.getElementById(tabId).classList.toggle('active', name === which);
+  });
 }
 document.getElementById('plannerTab').addEventListener('click',()=>switchWorkspace('planner'));
 document.getElementById('recordsTab').addEventListener('click',()=>{switchWorkspace('records');renderJourneyRecords();});
+document.getElementById('settingsTab').addEventListener('click',()=>switchWorkspace('settings'));
 
 // 行程明細可收合至側邊，也可隨時展開。
 (() => {

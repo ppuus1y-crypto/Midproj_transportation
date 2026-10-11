@@ -41,10 +41,11 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .map-panel[hidden]{display:none}
 .map-panel h2{margin-bottom:8px}
 .map-note{margin:0 0 14px;color:#64748b;font-size:14px;line-height:1.6}
-#googleMap{display:block;width:100%;height:480px;border:1px solid #dbe3ee;border-radius:12px;background:#f1f5f9}
-.map-links{margin:12px 0 0}
-.map-links a{color:#2457c5;font-weight:600;text-decoration:none}
-.map-links a:hover{text-decoration:underline}
+.map-segments{display:grid;gap:18px}
+.map-segment h3{margin:0 0 8px;color:#334155;font-size:16px;line-height:1.5}
+.map-segment iframe{display:block;width:100%;height:480px;border:1px solid #dbe3ee;border-radius:12px;background:#f1f5f9}
+.map-segment a{display:inline-block;margin-top:10px;color:#2457c5;font-weight:600;text-decoration:none}
+.map-segment a:hover{text-decoration:underline}
 
 .planning-fields{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin:0 0 18px}
 .planning-fields .departure-field{flex:1 1 260px;max-width:360px;margin:0}
@@ -76,8 +77,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 /* 儲存後的行程摘要與地圖左右並排 */
 .results-layout{max-width:1680px;margin:20px auto 36px;padding:0 24px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
 .results-layout .journey-summary,.results-layout .map-panel{margin:0;min-width:0}
-.results-layout #googleMap{width:100%;height:520px;border:1px solid #dbe3ee;border-radius:12px}
-@media(max-width:900px){.results-layout{grid-template-columns:1fr;padding:0 16px}.results-layout #googleMap{height:420px}}
+@media(max-width:900px){.results-layout{grid-template-columns:1fr;padding:0 16px}}
 
 .time-hint{display:block;margin-top:6px;color:#64748b;font-size:12px}
 .departure-time-input{max-width:360px;height:48px}
@@ -135,7 +135,7 @@ button:disabled{opacity:.4;cursor:not-allowed}
 @media(max-width:900px){.summary-restore{top:auto;bottom:20px}}
 .results-layout .journey-total{padding:14px 16px}
 .results-layout .journey-total strong{font-size:30px}
-.results-layout #googleMap{width:100%;height:470px;border:1px solid #dbe3ee;border-radius:10px}
+.results-layout .map-segment iframe{height:470px;border-radius:10px}
 .results-layout .splitter{
   width:8px;min-height:100%;border-radius:8px;background:#d8e3f4;
   cursor:col-resize;position:relative;touch-action:none;user-select:none;align-self:stretch;
@@ -151,10 +151,10 @@ button:disabled{opacity:.4;cursor:not-allowed}
 @media(max-width:900px){
   .results-layout{grid-template-columns:minmax(0,1fr);gap:14px;padding:0 12px}
   .results-layout .splitter{display:none}
-  .results-layout #googleMap{height:380px}
+  .results-layout .map-segment iframe{height:380px}
 }
 
-/* 左側雙頁籤：路線規劃／路線紀錄 */
+/* 左側工作區頁籤 */
 body{padding:0 18px 28px 208px}
 .side-tabs{position:fixed;left:0;top:0;bottom:0;width:180px;background:#fff;border-right:1px solid #dce2eb;padding:24px 12px;z-index:1100;box-shadow:3px 0 12px #1f29370a}
 .side-tabs h2{font-size:17px;margin:0 8px 22px;color:#173b76}
@@ -162,6 +162,14 @@ body{padding:0 18px 28px 208px}
 .side-tab.active{background:#eaf1ff;color:#2457c5}
 .workspace-view[hidden]{display:none!important}
 #recordsView{max-width:1500px;margin:0 auto 36px;padding-top:24px}
+#settingsView{max-width:1500px;margin:0 auto 36px;padding-top:24px}
+#settingsView h2{color:#111827;font-size:30px;font-weight:760;letter-spacing:.015em;line-height:1.25;margin:0 0 22px}
+.settings-panel{max-width:900px}
+.settings-panel h3{margin:0 0 16px;color:#334155;font-size:20px}
+#placesControls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border:1px solid #d5deea;border-radius:12px;background:#fff}
+#placesControls label{display:flex;align-items:center;gap:8px;font-weight:600;cursor:pointer}
+#placesControls input{width:auto}
+#placesApiStatus{color:#64748b;font-size:13px}
 .records-heading{display:flex;align-items:center;gap:16px;margin-bottom:22px}
 .records-heading-top{display:flex;align-items:flex-end;gap:12px}
 #recordsView .records-heading h2{margin:0;color:#111827;font-size:30px;font-weight:760;letter-spacing:.015em;line-height:1.25}
@@ -204,9 +212,8 @@ body{padding:0 18px 28px 208px}
 .record-detail-leg{padding:10px 0;border-bottom:1px solid #e4eaf3;font-size:16px;line-height:1.6}
 .record-detail-leg:last-child{border-bottom:0}
 .record-detail-map{min-width:0}
-.record-detail-map iframe{width:100%;height:340px;border:1px solid #dbe3ee;border-radius:9px}
-.record-detail-map a{display:inline-block;margin-top:8px;color:#2457c5;font-weight:600;text-decoration:none}
-@media(max-width:850px){.record-detail-layout{grid-template-columns:1fr}.record-detail-map iframe{height:300px}}
+.record-detail-map .map-segment iframe{height:340px;border-radius:9px}
+@media(max-width:850px){.record-detail-layout{grid-template-columns:1fr}.record-detail-map .map-segment iframe{height:300px}}
 #routePlannerView{display:block}
 @media(max-width:700px){body{padding:0 10px 20px 150px}.side-tabs{width:138px;padding:18px 8px}.side-tabs h2{font-size:15px;margin-left:4px}.side-tab{font-size:13px;padding:10px 7px}.record-item{grid-template-columns:14px minmax(0,1fr) 52px 52px;column-gap:6px}.record-actions{gap:5px}.record-action-col button{padding:6px 4px}}
 
@@ -273,3 +280,30 @@ body.sidebar-collapsed #toggleSidebar{right:-34px;width:34px;border-radius:0 10p
 .summary-restore{left:180px !important;z-index:1300 !important;}
 body.sidebar-collapsed .summary-restore{left:0 !important;}
 @media(max-width:700px){.summary-restore{left:138px !important;}body.sidebar-collapsed{padding-left:10px !important;}}
+
+/* Keep the selection checkbox in its own narrow column beside each data row. */
+#recordsView .records-table-wrap{width:100%;overflow-x:auto}
+#recordsView .records-delete-row{display:grid;grid-template-columns:24px minmax(760px,1fr);gap:8px;min-width:900px;padding:12px 13px 8px 0}
+#recordsView .records-select-spacer{display:block}
+#recordsView .records-delete-row button{justify-self:start}
+#recordsView .records-table-header-row{display:grid;grid-template-columns:24px minmax(760px,1fr);gap:8px;align-items:stretch;min-width:900px}
+#recordsView .records-select-head{display:flex;align-items:center;justify-content:center}
+#recordsView .records-table-head{grid-template-columns:minmax(130px,1.15fr) minmax(100px,.8fr) minmax(100px,1fr) minmax(100px,1fr) minmax(145px,1.25fr) 64px 64px;min-width:0;margin:0}
+#recordsView .record-list{overflow:visible;border:0;border-radius:0;gap:0}
+#recordsView .record-item{display:block;min-width:900px;padding:0!important;border:0!important;background:transparent;transition:none}
+#recordsView .record-item:hover{background:transparent}
+#recordsView .record-item-top{display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px;align-items:stretch}
+#recordsView .record-item .record-select{align-self:center;justify-self:center;margin:0}
+#recordsView .record-row-main{display:grid;grid-template-columns:minmax(130px,1.15fr) minmax(100px,.8fr) minmax(100px,1fr) minmax(100px,1fr) minmax(145px,1.25fr) 64px 64px;gap:8px;align-items:center;min-height:66px;padding:8px 13px;border:1px solid var(--ui-border);border-top:0;border-radius:0;background:#fff}
+#recordsView .record-item:first-child .record-row-main{border-top:0}
+#recordsView .record-data-cell{border:0;border-right:1px solid var(--ui-border);padding:0 8px 0 0}
+#recordsView .record-data-cell:last-of-type{border-right:0}
+#recordsView .record-row-actions{display:contents}
+#recordsView .record-row-actions button{width:100%;min-width:0;padding:10px 6px;font-size:12px}
+#recordsView .record-detail{grid-column:2;width:auto;margin:0 0 0 8px;padding:14px;border:1px solid var(--ui-border);border-top:0;border-radius:0 0 10px 10px;background:#fff}
+#recordsView .record-item:has(.record-detail:not([hidden])) .record-row-main{border-radius:0}
+#recordsView .record-empty{min-width:0}
+@media(max-width:900px){
+  #recordsView .records-table-wrap{overflow-x:auto}
+  #recordsView .records-table-header-row,#recordsView .records-delete-row,#recordsView .record-item{min-width:900px}
+}

@@ -2,6 +2,12 @@
 import os
 import mysql.connector
 from datetime import datetime
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 
 def get_connection():
@@ -32,6 +38,34 @@ def init_db():
         raise RuntimeError(
             "請確認 MySQL 的 tran 資料庫已建立 records 和 route 資料表。"
         ) from error
+    finally:
+        cursor.close()
+        conn.close()
+
+    # Places API 使用量與開關設定；保留既有 records、route 資料表。
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS `places_api_usage` (
+                `usage_month` CHAR(7) NOT NULL PRIMARY KEY,
+                `request_count` INT NOT NULL DEFAULT 0,
+                `notified_80` TINYINT(1) NOT NULL DEFAULT 0,
+                `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS `app_settings` (
+                `setting_key` VARCHAR(100) NOT NULL PRIMARY KEY,
+                `setting_value` VARCHAR(255) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+        cursor.execute("""
+            INSERT IGNORE INTO `app_settings` (`setting_key`, `setting_value`)
+            VALUES ('google_places_enabled', 'false')
+        """)
+        conn.commit()
     finally:
         cursor.close()
         conn.close()

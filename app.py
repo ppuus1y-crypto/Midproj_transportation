@@ -1,10 +1,18 @@
 
 from pathlib import Path
+import json
+import os
+import smtplib
+import urllib.error
+import urllib.request
+from datetime import datetime
+from email.message import EmailMessage
 
 from flask import Flask, jsonify, request, send_from_directory
 
 from database import (
     init_db,
+    get_connection as _connect_settings_db,
     get_all_journeys,
     get_journey,
     save_journey,
@@ -189,6 +197,192 @@ def remove_journeys():
         return jsonify({
             "error": "批次刪除失敗。"
         }), 500
+
+
+# ---------------- Google Places API（New）使用量控制 ----------------
+PLACES_MONTHLY_LIMIT = int(os.getenv("PLACES_MONTHLY_LIMIT", "100"))
+PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY", "").strip()
+
+
+def _get_setting(key, default="false"):
+    conn = _connect_settings_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT setting_value FROM app_settings WHERE setting_key=%s", (key,))
+        row = cur.fetchone()
+        return row[0] if row else default
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _set_setting(key, value):
+    conn = _connect_settings_db()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT INTO app_settings (setting_key, setting_value) VALUES (%s, %s)
+               ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)""",
+            (key, value),
+        )
+        conn.commit()
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _month_key():
+    return datetime.now().astimezone().strftime("%Y-%m")
+
+
+def _usage_status():
+    month = _month_key()
+    conn = _connect_settings_db()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT request_count FROM places_api_usage WHERE usage_month=%s",
+            (month,),
+        )
+        row = cur.fetchone()
+        count = row[0] if row else 0
+        return {
+            "month": month, "count": count, "limit": PLACES_MONTHLY_LIMIT,
+            "enabled": _get_setting("google_places_enabled") == "true",
+            "percent": min(100, round(count / max(PLACES_MONTHLY_LIMIT, 1) * 100)),
+            "configured": bool(PLACES_API_KEY),
+        }
+    finally:
+        cur.close()
+        conn.close()
+
+
+def _send_80_percent_email(month, count):
+    host = os.getenv("SMTP_HOST", "").strip()
+    port = int(os.getenv("SMTP_PORT", "587"))
+    username = os.getenv("SMTP_USERNAME", "").strip()
+    password = os.getenv("SMTP_PASSWORD", "")
+    sender = os.getenv("SMTP_FROM", username).strip()
+    recipient = os.getenv("SMTP_TO", "").strip()
+    if not all([host, username, password, sender, recipient]):
+        app.logger.warning("Places API 已達 80%%，但 SMTP 環境變數未完整設定，無法寄信。")
+        return
+    msg = EmailMessage()
+    msg["Subject"] = f"[交通路線專題] Places API 使用量已達 80%（{month}）"
+    msg["From"] = sender
+    msg["To"] = recipient
+    msg.set_content(f"本月已使用 {count}/{PLACES_MONTHLY_LIMIT} 次 Google Places API 自動完成請求。")
+    with smtplib.SMTP(host, port, timeout=15) as server:
+        server.starttls()
+        server.login(username, password)
+        server.send_message(msg)
+
+
+def _reserve_places_request():
+    month = _month_key()
+    conn = _connect_settings_db()
+    cur = conn.cursor()
+    try:
+        conn.start_transaction()
+        cur.execute(
+            "INSERT IGNORE INTO places_api_usage (usage_month, request_count, notified_80) VALUES (%s, 0, 0)",
+            (month,),
+        )
+        cur.execute(
+            "SELECT request_count, notified_80 FROM places_api_usage WHERE usage_month=%s FOR UPDATE",
+            (month,),
+        )
+        count, notified = cur.fetchone()
+        if count >= PLACES_MONTHLY_LIMIT:
+            conn.commit()
+            return False, count, False
+        count += 1
+        should_notify = count >= int(PLACES_MONTHLY_LIMIT * 0.8) and not bool(notified)
+        cur.execute(
+            "UPDATE places_api_usage SET request_count=%s, notified_80=%s WHERE usage_month=%s",
+            (count, int(bool(notified) or should_notify), month),
+        )
+        conn.commit()
+        return True, count, should_notify
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+
+
+@app.get("/api/places/status")
+def places_status():
+    return jsonify(_usage_status())
+
+
+@app.post("/api/places/toggle")
+def places_toggle():
+    data = request.get_json(silent=True) or {}
+    enabled = data.get("enabled")
+    if not isinstance(enabled, bool):
+        return jsonify({"error": "enabled 必須是 true 或 false。"}), 400
+    status = _usage_status()
+    if enabled and not PLACES_API_KEY:
+        return jsonify({"error": "尚未設定 GOOGLE_PLACES_API_KEY 環境變數。"}), 400
+    if enabled and status["count"] >= PLACES_MONTHLY_LIMIT:
+        return jsonify({"error": "本月請求已達上限，無法啟用。"}), 429
+    _set_setting("google_places_enabled", "true" if enabled else "false")
+    return jsonify(_usage_status())
+
+
+@app.post("/api/places/autocomplete")
+def places_autocomplete():
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("input") or "").strip()
+    if len(text) < 2:
+        return jsonify({"suggestions": []})
+    status = _usage_status()
+    if not status["enabled"]:
+        return jsonify({"error": "Google 地點自動完成已關閉，請手動輸入。", "disabled": True}), 403
+    if status["count"] >= PLACES_MONTHLY_LIMIT:
+        _set_setting("google_places_enabled", "false")
+        return jsonify({"error": "本月已達 100 次上限，Google 地點自動完成已停用。", "disabled": True}), 429
+    if not PLACES_API_KEY:
+        return jsonify({"error": "伺服器尚未設定 API 金鑰。"}), 503
+
+    allowed, count, notify = _reserve_places_request()
+    if not allowed:
+        _set_setting("google_places_enabled", "false")
+        return jsonify({"error": "本月已達請求上限，已自動停用。", "disabled": True}), 429
+    if notify:
+        try:
+            _send_80_percent_email(_month_key(), count)
+        except Exception:
+            app.logger.exception("Places API 80%% 電子郵件通知失敗")
+
+    req = urllib.request.Request(
+        "https://places.googleapis.com/v1/places:autocomplete",
+        data=json.dumps({"input": text, "languageCode": "zh-TW", "includedRegionCodes": ["tw"]}).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": PLACES_API_KEY,
+            "X-Goog-FieldMask": "suggestions.placePrediction.placeId,suggestions.placePrediction.text",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=12) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        suggestions = []
+        for item in result.get("suggestions", []):
+            prediction = item.get("placePrediction", {})
+            label = prediction.get("text", {}).get("text", "")
+            if label:
+                suggestions.append({"text": label, "placeId": prediction.get("placeId", "")})
+        return jsonify({"suggestions": suggestions, "usage": _usage_status()})
+    except urllib.error.HTTPError as error:
+        app.logger.error("Places API HTTP %s: %s", error.code, error.read().decode("utf-8", errors="replace"))
+        return jsonify({"error": "Google Places API 查詢失敗，請確認金鑰、API 啟用狀態及帳單設定。"}), 502
+    except (urllib.error.URLError, TimeoutError):
+        app.logger.exception("Places API 連線失敗")
+        return jsonify({"error": "目前無法連線至 Google Places API，請稍後再試。"}), 502
 
 
 if __name__ == "__main__":
