@@ -1,0 +1,9 @@
+{
+  "chat.tools.terminal.autoApprove": {
+    "&": true,
+    "/^node -e \"const fs=require\\('fs'\\); const html=fs\\.readFileSync\\('index\\.html','utf8'\\); const scripts=\\[\\.\\.\\.html\\.matchAll\\(/<script\\(\\?:\\\\s\\[\\^>\\]\\*\\)\\?>\\(\\[\\\\s\\\\S\\]\\*\\?\\)<\\\\/script>/gi\\)\\]; for \\(const \\[,script\\] of scripts\\) new Function\\(script\\); console\\.log\\('Inline JavaScript syntax OK'\\);\"$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
+  }
+}

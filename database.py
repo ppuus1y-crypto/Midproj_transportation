@@ -42,19 +42,10 @@ def init_db():
         cursor.close()
         conn.close()
 
-    # Places API 使用量與開關設定；保留既有 records、route 資料表。
+    # Google API 開關設定；保留既有 records、route 資料表。
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS `places_api_usage` (
-                `usage_month` CHAR(7) NOT NULL PRIMARY KEY,
-                `request_count` INT NOT NULL DEFAULT 0,
-                `notified_80` TINYINT(1) NOT NULL DEFAULT 0,
-                `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-                    ON UPDATE CURRENT_TIMESTAMP
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-        """)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS `app_settings` (
                 `setting_key` VARCHAR(100) NOT NULL PRIMARY KEY,
@@ -64,6 +55,14 @@ def init_db():
         cursor.execute("""
             INSERT IGNORE INTO `app_settings` (`setting_key`, `setting_value`)
             VALUES ('google_places_enabled', 'false')
+        """)
+        cursor.execute("""
+            INSERT IGNORE INTO `app_settings` (`setting_key`, `setting_value`)
+            VALUES ('google_routes_enabled', 'false')
+        """)
+        cursor.execute("""
+            INSERT IGNORE INTO `app_settings` (`setting_key`, `setting_value`)
+            VALUES ('google_maps_enabled', 'false')
         """)
         conn.commit()
     finally:
