@@ -1,0 +1,902 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>自訂交通路線</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<nav class="side-tabs" aria-label="主要頁籤">
+  <button type="button" id="toggleSidebar" aria-label="收合左側導覽列" title="收合左側導覽列">◀</button>
+  <h2>自訂交通</h2>
+  <button class="side-tab active" id="plannerTab" type="button"><span>⌖</span> 路線規劃</button>
+  <button class="side-tab" id="recordsTab" type="button"><span>⌖</span> 路線紀錄</button>
+  <button class="side-tab" id="settingsTab" type="button"><span>⚙</span> 設定</button>
+</nav>
+<div id="routePlannerView" class="workspace-view">
+<main>
+  <h1>路線規劃</h1>
+  <p class="demo-notice">公開展示版｜可編輯、查詢及儲存示範路線；資料只存在目前瀏覽器，不會寫入原專題的 MySQL。預估時間請手動填寫。</p>
+
+  <section class="panel">
+    <div class="planning-fields">
+    <div class="departure-field">
+      <label for="departureTime">出發時間（年月日 時:分）</label>
+      <input id="departureTime" class="departure-time-input" type="datetime-local" step="60" aria-describedby="departureTimeHint">
+      <small id="departureTimeHint" class="time-hint">請選擇路線出發日期與時間；大眾運輸路線會依前一段所需時間接續計算。</small>
+    </div>
+    <div class="route-name-field">
+      <label for="routeName">路線名稱</label>
+      <input id="routeName" type="text" maxlength="80" placeholder="例如：202610101424" autocomplete="off">
+    </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th style="width:70px">排序</th>
+          <th class="sortable" data-sort="from" tabindex="0" role="button" aria-label="依起點排序">起點 <span class="sort-indicator">↕</span></th>
+          <th class="sortable" data-sort="to" tabindex="0" role="button" aria-label="依終點排序">終點 <span class="sort-indicator">↕</span></th>
+          <th class="sortable" data-sort="mode" style="width:125px" tabindex="0" role="button" aria-label="依交通工具排序">交通工具 <span class="sort-indicator">↕</span></th>
+          <th class="sortable" data-sort="time" style="width:125px" tabindex="0" role="button" aria-label="依預估時間排序">預估時間 <span class="sort-indicator">↕</span></th>
+          <th class="sortable" data-sort="stay" style="width:125px" tabindex="0" role="button" aria-label="依停留時間排序">停留時間 <span class="sort-indicator">↕</span></th>
+          <th style="width:90px">操作</th>
+        </tr></thead>
+        <tbody id="routeRows"></tbody>
+      </table>
+    </div>
+    <div class="actions">
+      <button class="primary" id="addRoute" type="button">＋ 新增路段</button>
+      <button class="secondary" id="queryRoutes" type="button">查詢</button>
+      <button class="secondary" id="clearRoutes" type="button">全部刪除</button>
+      <button class="secondary" id="saveRoutes" type="button">儲存</button>
+    </div>
+    <p id="routeCalculationStatus" class="time-hint" role="status" aria-live="polite">開啟設定中的 Google Routes API 後，填妥起點與終點即可自動計算。</p>
+    
+  </section>
+</main>
+<div class="results-layout" id="resultsLayout">
+  <section class="journey-summary" id="journeySummary" hidden>
+    <div class="summary-heading"><h2>總行程時間與明細</h2><button class="summary-toggle" id="collapseSummary" type="button" title="收合至側邊" aria-label="收合總行程時間與明細">‹</button></div>
+    <div class="journey-total">
+      <span>預估總行程時間</span>
+      <strong id="journeyTotal">—</strong>
+    </div>
+    <div class="journey-legs" id="journeyLegs"></div>
+  </section>
+  <button class="summary-restore" id="restoreSummary" type="button" title="展開行程明細" aria-label="展開總行程時間與明細">▶</button>
+  <div class="splitter" id="resultSplitter" role="separator" aria-label="拖曳調整行程明細與地圖寬度" aria-orientation="vertical" tabindex="0" title="左右拖曳調整版面"></div>
+  <section class="map-panel" id="mapPanel" hidden>
+    <h2>Google Maps 路線</h2>
+    <p class="map-note" id="mapNote">各路段會獨立顯示於同一張地圖。</p>
+    <div id="googleMap" class="google-map" role="application" aria-label="Google 地圖路線"></div>
+    <a id="openSelectedRoute" class="map-open-route" href="#" target="_blank" rel="noopener noreferrer" aria-disabled="true">在 Google Maps 開啟此路段 ↗</a>
+  </section>
+</div>
+</div>
+<section id="recordsView" class="workspace-view" hidden>
+  <div class="records-heading"><div class="records-heading-top"><h2>路線紀錄</h2><span id="recordCount" class="hint">共 0 筆紀錄</span></div></div>
+  <div class="records-table-wrap"><div class="records-delete-row"><span class="records-select-spacer"></span><button type="button" id="deleteAllRecords" class="record-delete">刪除</button></div><div class="records-table-header-row"><span class="records-select-head"><input type="checkbox" id="selectAllRecords" class="select-all-records" aria-label="全選或取消全選路線紀錄" title="全選／取消全選"></span><div class="records-table-head"><span><button type="button" class="sort-header" data-sort="title">路線名稱 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="departureTime">出發時間 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="origin">起點 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="destination">終點 <span class="sort-arrow"></span></button></span><span><button type="button" class="sort-header" data-sort="savedAt">儲存時間 <span class="sort-arrow"></span></button></span><span></span><span></span></div></div><ul class="record-list" id="recordList"></ul></div>
+</section>
+<section id="settingsView" class="workspace-view" hidden>
+  <h2>設定</h2>
+  <section class="panel settings-panel" aria-labelledby="placesSettingsHeading">
+    <h3 id="placesSettingsHeading">地點搜尋建議</h3>
+    <div id="placesControls">
+      <label for="placesApiToggle">
+        <input id="placesApiToggle" type="checkbox">
+        使用 Google Places Autocomplete widget
+      </label>
+      <span id="placesApiStatus" role="status">目前關閉。</span>
+    </div>
+  </section>
+  <section class="panel settings-panel" aria-labelledby="routesSettingsHeading">
+    <h3 id="routesSettingsHeading">行程時間</h3>
+    <div id="routesControls">
+      <label for="routesApiToggle">
+        <input id="routesApiToggle" type="checkbox">
+        使用 Google Routes API
+      </label>
+      <span id="routesApiStatus" role="status">目前關閉。</span>
+    </div>
+  </section>
+  <section class="panel settings-panel" aria-labelledby="mapsSettingsHeading">
+    <h3 id="mapsSettingsHeading">顯示Google地圖</h3>
+    <div id="mapsControls">
+      <label for="mapsApiToggle">
+        <input id="mapsApiToggle" type="checkbox">
+        使用 Maps JavaScript API
+      </label>
+      <span id="mapsApiStatus" role="status">目前關閉。</span>
+    </div>
+  </section>
+</section>
+<script>
+// 左側自訂交通導覽列收合／展開
+(() => {
+  const button = document.getElementById('toggleSidebar');
+  if (!button) return;
+  button.addEventListener('click', () => {
+    const collapsed = document.body.classList.toggle('sidebar-collapsed');
+    button.textContent = collapsed ? '▶' : '◀';
+    button.setAttribute('aria-label', collapsed ? '展開左側導覽列' : '收合左側導覽列');
+    button.title = collapsed ? '展開左側導覽列' : '收合左側導覽列';
+  });
+})();
+
+// 新建行程時，路線名稱預帶本機電腦日期與時間（YYYYMMDDHHmm），並以灰字顯示。
+function defaultRouteNameFromLocalTime() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+const initialRoutes = [
+  {from:'天母sogo',to:'士林捷運站',mode:'捷運',time:'',stay:'1hr'},
+  {from:'劍潭集運站',to:'台北車站',mode:'公車',time:'',stay:'3min'},
+  {from:'優仕紳烘焙',to:'西門町',mode:'步行',time:'',stay:'30min'},
+  {from:'台北車站',to:'南港捷運站',mode:'火車',time:'',stay:''}
+];
+let routes = initialRoutes.map((r,i)=>({...r,id:i+1}));
+let nextId = routes.length+1;
+let dragId = null;
+const tbody = document.getElementById('routeRows');
+const modes = ['捷運','公車','火車','ubike','步行'];
+
+const placesApiToggle = document.getElementById('placesApiToggle');
+const placesApiStatus = document.getElementById('placesApiStatus');
+const routesApiToggle = document.getElementById('routesApiToggle');
+const routesApiStatus = document.getElementById('routesApiStatus');
+const mapsApiToggle = document.getElementById('mapsApiToggle');
+const mapsApiStatus = document.getElementById('mapsApiStatus');
+const routeCalculationStatus = document.getElementById('routeCalculationStatus');
+const apiBaseUrl = window.location.port === '5500'
+  ? `${window.location.protocol}//${window.location.hostname}:5000`
+  : '';
+const apiUrl = path => `${apiBaseUrl}${path}`;
+let routesCalculationTimer = null;
+let routesCalculationVersion = 0;
+let routesCalculationPromise = Promise.resolve();
+let googleMap = null;
+let googleMapsLoadPromise = null;
+let googleMapsOverlays = new Map();
+let selectedGoogleRouteId = null;
+
+async function readApiJson(response) {
+  try {
+    return await response.json();
+  } catch (error) {
+    if (!response.headers.get('Content-Type')?.includes('application/json')) {
+      throw new Error(
+        `API 回應不是 JSON。請確認 Flask 後端正在 http://${window.location.hostname}:5000 執行。`,
+        {cause:error}
+      );
+    }
+    throw new Error('API 回應的 JSON 格式無效。', {cause:error});
+  }
+}
+
+// 展示版不連接 Flask、MySQL 或 Google Places／Routes API；避免公開頁面呼叫後端。
+function refreshPlacesStatus() {
+  placesApiToggle.checked = false;
+  placesApiToggle.disabled = true;
+  placesApiStatus.textContent = '展示版不連接 Places API，起點與終點請手動輸入。';
+}
+function refreshRoutesStatus() {
+  routesApiToggle.checked = false;
+  routesApiToggle.disabled = true;
+  routesApiStatus.textContent = '展示版不呼叫 Routes API；預估時間可自行填寫。';
+  routeCalculationStatus.textContent = '展示版：請手動填寫預估時間，查詢與儲存會在此瀏覽器中進行。';
+  return Promise.resolve({enabled:false, configured:false});
+}
+function refreshMapsStatus() {
+  mapsApiToggle.checked = true;
+  mapsApiToggle.disabled = false;
+  mapsApiStatus.textContent = '使用 Google Maps 嵌入地圖，不需要公開 API 金鑰；路線由 Google Maps 網頁提供。';
+  return Promise.resolve({enabled:true, configured:true});
+}
+placesApiToggle.addEventListener('change', () => {
+  placesApiToggle.checked = false;
+  placesApiStatus.textContent = '展示版僅提供手動輸入，不會呼叫 Places API。';
+});
+routesApiToggle.addEventListener('change', () => {
+  routesApiToggle.checked = false;
+  routesApiStatus.textContent = '展示版不呼叫 Routes API；預估時間請自行填寫。';
+});
+mapsApiToggle.addEventListener('change', () => {
+  if (mapsApiToggle.checked) {
+    mapsApiStatus.textContent = 'Google Maps 嵌入地圖已開啟。';
+    if (!document.getElementById('mapPanel').hidden) showGoogleMap();
+  } else {
+    document.getElementById('googleMap').replaceChildren();
+    document.getElementById('mapNote').textContent = '地圖顯示已關閉；可至設定重新開啟。';
+    mapsApiStatus.textContent = '目前關閉。';
+  }
+});
+refreshPlacesStatus();
+refreshRoutesStatus();
+refreshMapsStatus();
+
+function updateRoutePlace(wrapper, cls, value) {
+  const row = wrapper.closest('tr');
+  const route = routes.find(item => item.id === Number(row?.dataset.id));
+  if (!route || route[cls] === value) return;
+  route[cls] = value;
+  scheduleRoutesCalculation();
+  if (!document.getElementById('mapPanel').hidden && mapsApiToggle.checked) showGoogleMap();
+}
+function createInput(value, cls, placeholder='') {
+  const input=document.createElement('input');
+  input.value=value;
+  input.className=cls;
+  input.placeholder=placeholder;
+  input.autocomplete='off';
+  input.addEventListener('input',()=>{
+    if (cls==='from'||cls==='to') {
+      updateRoutePlace(input.closest('.place-input-wrapper'), cls, input.value);
+    } else if (cls==='stay') {
+      const row=input.closest('tr');
+      const route=routes.find(r=>r.id===Number(row.dataset.id));
+      if(route) route[cls]=input.value;
+      scheduleRoutesCalculation();
+    }
+  });
+  if (cls === 'time') {
+    input.setAttribute('aria-label', '自行填寫預估時間');
+    input.placeholder = '例如 20min';
+    input.addEventListener('input', () => {
+      const row = input.closest('tr');
+      const route = routes.find(item => item.id === Number(row?.dataset.id));
+      if (route) route.time = input.value;
+      if (!document.getElementById('journeySummary').hidden) showJourneySummary(departureInput.value);
+    });
+  }
+  if(cls==='from'||cls==='to'){
+    const wrapper=document.createElement('div');
+    wrapper.className='place-input-wrapper';
+    wrapper.appendChild(input);
+    if (placesApiToggle.checked) {
+      loadGoogleMapsApi()
+        .then(maps => maps.importLibrary('places'))
+        .then(({PlaceAutocompleteElement}) => {
+          if (placesApiToggle.checked && wrapper.isConnected) {
+            installPlaceWidget(wrapper, input, cls, PlaceAutocompleteElement);
+          }
+        })
+        .catch(error => {
+          placesApiStatus.textContent = `無法載入 Google Autocomplete widget：${error.message}`;
+        });
+    }
+    return wrapper;
+  }
+  return input;
+}
+// 點擊資料欄位表頭排序；同一欄再次點擊會切換升冪／降冪。
+let routeSort = {key:null, direction:1};
+function sortRoutesBy(key){
+  const direction = routeSort.key===key ? -routeSort.direction : 1;
+  routeSort = {key, direction};
+  const textValue = value => String(value ?? '').trim().toLocaleLowerCase('zh-TW');
+  routes.sort((a,b)=>{
+    let result=0;
+    if(key==='time'||key==='stay'){
+      result=durationMinutes(a[key])-durationMinutes(b[key]);
+    }else{
+      result=textValue(a[key]).localeCompare(textValue(b[key]),'zh-TW',{numeric:true,sensitivity:'base'});
+    }
+    return result*direction;
+  });
+  document.querySelectorAll('th[data-sort]').forEach(th=>{
+    const active=th.dataset.sort===key;
+    th.setAttribute('aria-sort',active?(direction===1?'ascending':'descending'):'none');
+    const indicator=th.querySelector('.sort-indicator');
+    if(indicator)indicator.textContent=active?(direction===1?'↑':'↓'):'↕';
+  });
+  render();
+  scheduleRoutesCalculation();
+}
+document.querySelectorAll('th[data-sort]').forEach(th=>{
+  th.addEventListener('click',()=>sortRoutesBy(th.dataset.sort));
+  th.addEventListener('keydown',event=>{
+    if(event.key==='Enter'||event.key===' '){event.preventDefault();sortRoutesBy(th.dataset.sort);}
+  });
+});
+function render(){
+  tbody.innerHTML='';
+  routes.forEach((route,index)=>{
+    const tr=document.createElement('tr');
+    tr.dataset.id=route.id;
+    tr.draggable=true;
+    tr.addEventListener('dragstart',e=>{dragId=route.id;tr.classList.add('dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',String(route.id));});
+    tr.addEventListener('dragend',()=>{dragId=null;tr.classList.remove('dragging');tbody.querySelectorAll('.drop-target').forEach(x=>x.classList.remove('drop-target'));});
+    tr.addEventListener('dragover',e=>{e.preventDefault();if(route.id!==dragId)tr.classList.add('drop-target');});
+    tr.addEventListener('dragleave',()=>tr.classList.remove('drop-target'));
+    tr.addEventListener('drop',e=>{
+      e.preventDefault();tr.classList.remove('drop-target');
+      const fromId=dragId ?? Number(e.dataTransfer.getData('text/plain'));
+      if(!fromId||fromId===route.id)return;
+      const fromIndex=routes.findIndex(r=>r.id===fromId);
+      const toIndex=routes.findIndex(r=>r.id===route.id);
+      if(fromIndex<0||toIndex<0)return;
+      const [moved]=routes.splice(fromIndex,1);routes.splice(toIndex,0,moved);render();scheduleRoutesCalculation();
+    });
+
+    const dragTd=document.createElement('td');dragTd.className='drag-cell';
+    const handle=document.createElement('span');handle.className='drag-handle';handle.textContent='⠿';handle.title='拖曳重新排序';handle.setAttribute('aria-label','拖曳重新排序');
+    const order=document.createElement('span');order.className='order';order.textContent=index+1;
+    dragTd.append(handle,order);tr.appendChild(dragTd);
+
+    const fromTd=document.createElement('td');fromTd.appendChild(createInput(route.from,'from','輸入起點'));tr.appendChild(fromTd);
+    const toTd=document.createElement('td');toTd.appendChild(createInput(route.to,'to','輸入終點'));tr.appendChild(toTd);
+    const modeTd=document.createElement('td');
+    const select=document.createElement('select');select.className='mode';
+    modes.forEach(mode=>{const option=document.createElement('option');option.value=mode;option.textContent=mode;option.selected=route.mode===mode;select.appendChild(option);});
+    select.addEventListener('change',()=>{
+      const currentRoute=routes.find(item=>item.id===Number(tr.dataset.id));
+      if(currentRoute){
+        currentRoute.mode=select.value;
+        delete currentRoute.encodedPolyline;
+      }
+      scheduleRoutesCalculation();
+      if (mapsApiToggle.checked && googleMap) drawGoogleMapRoutes(routes);
+    });modeTd.appendChild(select);tr.appendChild(modeTd);
+    const timeTd=document.createElement('td');timeTd.appendChild(createInput(route.time,'time','自動計算'));tr.appendChild(timeTd);
+    const stayTd=document.createElement('td');stayTd.appendChild(createInput(route.stay,'stay','例如 1hr'));tr.appendChild(stayTd);
+    const opTd=document.createElement('td');const del=document.createElement('button');del.type='button';del.className='delete';del.textContent='刪除';
+    del.addEventListener('click',()=>{routes=routes.filter(r=>r.id!==route.id);render();scheduleRoutesCalculation();});opTd.appendChild(del);tr.appendChild(opTd);
+    tbody.appendChild(tr);
+  });
+}
+document.getElementById('addRoute').addEventListener('click',()=>{routes.push({id:nextId++,from:'',to:'',mode:'捷運',time:'',stay:''});render();});
+document.getElementById('clearRoutes').addEventListener('click',()=>{
+  if(!confirm('確定要刪除所有路段嗎？')) return;
+  routes=[];
+  render();
+  scheduleRoutesCalculation();
+});
+function renderGoogleMapsSegments(container, routeList, titlePrefix = '路段') {
+  const validRoutes = routeList
+    .map((route, index) => ({
+      id: route.id ?? index + 1,
+      from: String(route.from || '').trim(),
+      to: String(route.to || '').trim()
+    }))
+    .filter(route => route.from && route.to);
+  container.replaceChildren();
+  validRoutes.forEach(route => {
+    const section = document.createElement('section');
+    section.className = 'map-segment';
+    section.dataset.routeId = String(route.id);
+    const heading = document.createElement('h3');
+    heading.textContent = `${titlePrefix} ID ${route.id}：${route.from} → ${route.to}`;
+    const iframe = document.createElement('iframe');
+    iframe.title = `Google Maps ${titlePrefix} ID ${route.id}`;
+    iframe.loading = 'lazy';
+    iframe.referrerPolicy = 'no-referrer-when-downgrade';
+    iframe.allowFullscreen = true;
+    const travelMode = ({'捷運':'transit','公車':'transit','火車':'transit','ubike':'bicycling','步行':'walking'})[route.mode] || 'transit';
+    iframe.src = 'https://www.google.com/maps?output=embed&' + new URLSearchParams({
+      saddr: route.from,
+      daddr: route.to,
+      dirflg: travelMode === 'walking' ? 'w' : travelMode === 'bicycling' ? 'b' : 'r'
+    }).toString();
+    const link = document.createElement('a');
+    const params = new URLSearchParams({
+      api: '1',
+      origin: route.from,
+      destination: route.to,
+      travelmode: travelMode
+    });
+    link.href = 'https://www.google.com/maps/dir/?' + params.toString();
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = `在 Google Maps 開啟此路段 ↗`;
+    section.append(heading, iframe, link);
+    container.appendChild(section);
+  });
+  return {
+    displayed: validRoutes.length,
+    skipped: routeList.length - validRoutes.length
+  };
+}
+
+function setGoogleMapMessage(message) {
+  const host = document.getElementById('googleMap');
+  const note = document.createElement('p');
+  note.className = 'google-map-placeholder';
+  note.textContent = message;
+  host.replaceChildren(note);
+}
+function showGoogleMap() {
+  const mapPanel = document.getElementById('mapPanel');
+  const mapNote = document.getElementById('mapNote');
+  mapPanel.hidden = false;
+  if (!mapsApiToggle.checked) {
+    mapNote.textContent = '地圖顯示已關閉，請至「設定」重新開啟。';
+    setGoogleMapMessage('請至「設定」開啟 Google 地圖。');
+    return;
+  }
+  const host = document.getElementById('googleMap');
+  const result = renderGoogleMapsSegments(host, routes, '路段');
+  mapNote.textContent = result.displayed
+    ? `目前顯示 ${result.displayed} 個 Google Maps 路段地圖。這是嵌入式地圖，不會在展示版中計算路線時間。`
+    : '請先填寫至少一段路線的起點與終點，再按「查詢」。';
+  const first = routes.find(route => route.from && route.to);
+  selectedGoogleRouteId = first ? String(first.id) : null;
+  updateOpenRouteLink(selectedGoogleRouteId);
+}
+function updateOpenRouteLink(routeId) {
+  const link = document.getElementById('openSelectedRoute');
+  const route = routes.find(item => String(item.id) === String(routeId));
+  if (!route?.from || !route?.to) {
+    link.href = '#';
+    link.setAttribute('aria-disabled', 'true');
+    return;
+  }
+  const travelMode = ({'捷運':'transit','公車':'transit','火車':'transit','ubike':'bicycling','步行':'walking'})[route.mode] || 'transit';
+  link.href = 'https://www.google.com/maps/dir/?' + new URLSearchParams({
+    api: '1', origin: route.from, destination: route.to, travelmode: travelMode
+  }).toString();
+  link.setAttribute('aria-disabled', 'false');
+}
+document.getElementById('openSelectedRoute').addEventListener('click', event => {
+  if (event.currentTarget.getAttribute('aria-disabled') === 'true') event.preventDefault();
+});
+function highlightRouteOnMap(routeId, preview = false) {
+  document.querySelectorAll('#journeyLegs .journey-leg.is-hovered').forEach(card => card.classList.remove('is-hovered'));
+  const card = [...document.querySelectorAll('#journeyLegs .journey-leg')]
+    .find(item => item.dataset.routeId === String(routeId));
+  if (preview) card?.classList.add('is-hovered');
+}
+function selectRouteOnMap(routeId) {
+  selectedGoogleRouteId = String(routeId || '');
+  updateOpenRouteLink(selectedGoogleRouteId);
+  document.querySelectorAll('#journeyLegs .journey-leg.is-selected').forEach(card => {
+    card.classList.remove('is-selected');
+    card.setAttribute('aria-pressed', 'false');
+  });
+  const card = [...document.querySelectorAll('#journeyLegs .journey-leg')]
+    .find(item => item.dataset.routeId === selectedGoogleRouteId);
+  card?.classList.add('is-selected');
+  card?.setAttribute('aria-pressed', 'true');
+}
+async function focusRouteOnMap(routeId) {
+  selectRouteOnMap(routeId, false);
+  const route = routes.find(item => String(item.id) === String(routeId));
+  if (route?.from && route?.to) {
+    const link = document.getElementById('openSelectedRoute');
+    link.href = 'https://www.google.com/maps/dir/?' + new URLSearchParams({
+      api:'1', origin:route.from, destination:route.to,
+      travelmode:({'捷運':'transit','公車':'transit','火車':'transit','ubike':'bicycling','步行':'walking'})[route.mode] || 'transit'
+    }).toString();
+    document.querySelectorAll('#googleMap .map-segment').forEach(section => {
+      section.classList.toggle('is-selected', section.dataset.routeId === String(routeId));
+    });
+  }
+}
+
+const departureInput = document.getElementById('departureTime');
+departureInput.addEventListener('input', () => {
+  departureInput.classList.remove('invalid');
+  scheduleRoutesCalculation();
+  if (!document.getElementById('journeySummary').hidden) {
+    showJourneySummary(departureInput.value);
+  }
+});
+
+const routeNameInput = document.getElementById('routeName');
+if (routeNameInput && !routeNameInput.value.trim()) { routeNameInput.value = defaultRouteNameFromLocalTime(); routeNameInput.classList.add('auto-generated-name'); }
+routeNameInput?.addEventListener('input', () => routeNameInput.classList.remove('auto-generated-name'));
+
+document.getElementById('saveRoutes').addEventListener('click', async () => {
+  const departureTime = normalizeDepartureDateTime(true);
+  if (departureTime === null) return;
+  const title = document.getElementById('routeName').value.trim();
+  if (!title) {
+    alert('請先填寫路線名稱。');
+    document.getElementById('routeName').focus();
+    return;
+  }
+  const records = JSON.parse(localStorage.getItem('customTransitJourneyRecords') || '[]');
+  const snapshot = JSON.parse(JSON.stringify(routes));
+  const record = {
+    id: Date.now(),
+    title,
+    departureTime,
+    routes: snapshot,
+    savedAt: new Date().toLocaleString('zh-TW', {hour12:false})
+  };
+  records.unshift(record);
+  localStorage.setItem('customTransitJourneyRecords', JSON.stringify(records));
+  localStorage.setItem('customTransitRoutes', JSON.stringify({routes, departureTime, title}));
+  await renderJourneyRecords();
+  showJourneySummary(departureTime);
+  showGoogleMap();
+  routeCalculationStatus.textContent = '已儲存至目前瀏覽器。此展示版不會寫入 MySQL；其他裝置或瀏覽器不會自動同步。';
+});
+
+document.getElementById('queryRoutes').addEventListener('click',async event=>{
+  const departureTime = normalizeDepartureDateTime(true);
+  if (departureTime === null) return;
+  const button = event.currentTarget;
+  button.disabled = true;
+  try {
+    await finishPendingRoutesCalculation();
+    showJourneySummary(departureTime);
+    showGoogleMap();
+  } catch (error) {
+    routeCalculationStatus.textContent = `自動計算失敗：${error.message}`;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+function durationMinutes(text) {
+  const s = String(text || '').trim().toLowerCase();
+  if (!s) return 0;
+  let total = 0, matched = false;
+  for (const m of s.matchAll(/(\d+(?:\.\d+)?)\s*(?:hr|hrs|hour|hours|小時|時)/g)) { total += Number(m[1]) * 60; matched = true; }
+  for (const m of s.matchAll(/(\d+(?:\.\d+)?)\s*(?:min|mins|minute|minutes|分鐘|分)/g)) { total += Number(m[1]); matched = true; }
+  if (!matched && /^\d+(?:\.\d+)?$/.test(s)) total = Number(s);
+  return Math.round(total);
+}
+function formatDurationMinutes(minutes) {
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours && remainingMinutes) return `${hours}小時${remainingMinutes}分`;
+  if (hours) return `${hours}小時`;
+  return `${remainingMinutes}分`;
+}
+function scheduleRoutesCalculation() {
+  routeCalculationVersion += 1;
+  clearTimeout(routesCalculationTimer);
+  routesCalculationTimer = null;
+  routeCalculationStatus.textContent = '展示版不呼叫 Routes API；請在「預估時間」欄手動填寫時間。';
+}
+async function finishPendingRoutesCalculation() {
+  return Promise.resolve();
+}
+async function calculateRoutesTravelTimes() {
+  routeCalculationStatus.textContent = '展示版不呼叫 Routes API；預估時間請自行填寫。';
+}
+function showJourneySummary(departureTime) {
+  const summary = document.getElementById('journeySummary');
+  const totalEl = document.getElementById('journeyTotal');
+  const legsEl = document.getElementById('journeyLegs');
+  summary.hidden = false;
+  if (!routes.some(route => String(route.id) === selectedGoogleRouteId)) {
+    selectedGoogleRouteId = String(routes.find(route => route.from && route.to)?.id ?? '');
+  }
+  updateOpenRouteLink(selectedGoogleRouteId);
+  const total = renderJourneyLegCards(legsEl, routes, departureTime, true);
+  if (selectedGoogleRouteId) selectRouteOnMap(selectedGoogleRouteId, false);
+  totalEl.textContent = formatDurationMinutes(total);
+}
+function renderJourneyLegCards(container, routeList, departureTime, interactive = false) {
+  container.replaceChildren();
+  const heading = document.createElement('h3');
+  heading.textContent = '行程明細';
+  container.append(heading);
+  const clock = parseDepartureDateTime(departureTime);
+  let total = 0;
+  routeList.forEach((r, i) => {
+    const minutes = durationMinutes(r.time);
+    const stop = durationMinutes(r.stay);
+    const routeId = String(r.id ?? i + 1);
+    total += minutes + stop;
+    const startDate = new Date(clock);
+    clock.setMinutes(clock.getMinutes() + minutes + stop);
+    const endDate = new Date(clock);
+    const row = document.createElement(interactive ? 'button' : 'div');
+    if (interactive) row.type = 'button';
+    row.className = 'journey-leg';
+    row.dataset.routeId = routeId;
+    if (interactive) {
+      row.setAttribute('aria-label', `查看第 ${i + 1} 段路線地圖：${r.from || '未填起點'} 至 ${r.to || '未填終點'}`);
+      row.setAttribute('aria-pressed', 'false');
+    }
+    const icon = document.createElement('span');
+    icon.className = 'journey-leg-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = ({'捷運':'🚇','公車':'🚌','火車':'🚆','ubike':'🚲','步行':'🚶'})[r.mode] || '📍';
+    const details = document.createElement('span');
+    details.className = 'journey-leg-details';
+    const heading = document.createElement('span');
+    heading.className = 'journey-leg-heading';
+    const times = document.createElement('strong');
+    times.className = 'journey-leg-times';
+    const timeFormat = new Intl.DateTimeFormat('zh-TW', {hour:'numeric', minute:'2-digit', hour12:true});
+    const dateFormat = new Intl.DateTimeFormat('zh-TW', {month:'numeric', day:'numeric'});
+    const crossesDate = startDate.toDateString() !== endDate.toDateString();
+    times.textContent = `${crossesDate ? `${dateFormat.format(startDate)} ` : ''}${timeFormat.format(startDate)}—${crossesDate ? `${dateFormat.format(endDate)} ` : ''}${timeFormat.format(endDate)}`;
+    const duration = document.createElement('span');
+    duration.className = 'journey-leg-duration';
+    duration.textContent = formatDurationMinutes(minutes);
+    heading.append(times, duration);
+    const mode = document.createElement('span');
+    mode.className = 'journey-leg-mode';
+    mode.textContent = `路段 ID ${routeId}｜${r.mode || '未選交通工具'}${stop ? `｜停留 ${formatDurationMinutes(stop)}` : ''}`;
+    const places = document.createElement('span');
+    places.className = 'journey-leg-places';
+    places.textContent = `${r.from || '未填起點'} → ${r.to || '未填終點'}`;
+    details.append(heading, mode, places);
+    row.append(icon, details);
+    if (interactive) {
+      row.addEventListener('mouseenter', () => highlightRouteOnMap(routeId, true));
+      row.addEventListener('mouseleave', () => highlightRouteOnMap(selectedGoogleRouteId));
+      row.addEventListener('focus', () => highlightRouteOnMap(routeId, true));
+      row.addEventListener('blur', () => highlightRouteOnMap(selectedGoogleRouteId));
+      row.addEventListener('click', () => focusRouteOnMap(routeId));
+    }
+    container.append(row);
+  });
+  return total;
+}
+function padDatePart(value) {
+  return String(value).padStart(2, '0');
+}
+function formatDateTimeInput(date) {
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}T${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`;
+}
+function formatDateTimeDisplay(date) {
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())} ${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`;
+}
+function defaultDepartureDateTime() {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() + 10, 0, 0);
+  return formatDateTimeInput(date);
+}
+function parseDepartureDateTime(value) {
+  const text = String(value || '').trim();
+  if (/^\d{1,2}:[0-5]\d$/.test(text)) {
+    const today = new Date();
+    const [hour, minute] = text.split(':').map(Number);
+    today.setHours(hour, minute, 0, 0);
+    return today;
+  }
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+function normalizeDepartureDateTime(showMessage = false) {
+  const input = document.getElementById('departureTime');
+  const value = input.value;
+  const date = new Date(value);
+  const valid = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) &&
+    !Number.isNaN(date.getTime()) && formatDateTimeInput(date) === value;
+  input.classList.toggle('invalid', !valid);
+  if (!valid) {
+    if (showMessage) {
+      alert('請選擇有效的出發年月日與時間。');
+      input.focus();
+    }
+    return null;
+  }
+  return value;
+}
+function displayDepartureDateTime(value) {
+  return formatDateTimeDisplay(parseDepartureDateTime(value));
+}
+if (!departureInput.value) departureInput.value = defaultDepartureDateTime();
+try {
+  const saved = localStorage.getItem('customTransitRoutes');
+  if (saved) {
+    const parsed = JSON.parse(saved);
+    if (Array.isArray(parsed)) {
+      routes = parsed;
+    } else if (parsed && Array.isArray(parsed.routes)) {
+      routes = parsed.routes;
+      if (parsed.departureTime) {
+        document.getElementById('departureTime').value =
+          formatDateTimeInput(parseDepartureDateTime(parsed.departureTime));
+      }
+    }
+    routes = routes.map(r => ({...r, mode: ['捷運','公車','火車','ubike','步行'].includes(r.mode) ? r.mode : '捷運'}));
+    nextId = Math.max(0, ...routes.map(r => Number(r.id) || 0)) + 1;
+  }
+} catch (error) {}
+render();
+
+async function getJourneyRecords() {
+  try {
+    const records = JSON.parse(localStorage.getItem('customTransitJourneyRecords') || '[]');
+    return Array.isArray(records) ? records : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+// 展示版路線紀錄只存於目前瀏覽器的 localStorage，不連接 MySQL。
+document.getElementById('selectAllRecords').addEventListener('change', event=>{
+  document.querySelectorAll('#recordList .record-select').forEach(box=>{box.checked=event.target.checked;});
+});
+document.getElementById('deleteAllRecords').addEventListener('click',()=>{
+  const selected=[...document.querySelectorAll('#recordList .record-select:checked')].map(box=>Number(box.dataset.recordId));
+  if(!selected.length){alert('請先勾選要刪除的路線紀錄。');return;}
+  const records = JSON.parse(localStorage.getItem('customTransitJourneyRecords') || '[]');
+  const remaining = records.filter(record => !selected.includes(Number(record.id)));
+  localStorage.setItem('customTransitJourneyRecords', JSON.stringify(remaining));
+  renderJourneyRecords();
+});
+
+let journeyRecordSort={key:'',direction:1};
+document.querySelectorAll('.records-table-head .sort-header').forEach(button=>{
+  button.addEventListener('click',()=>{
+    const key=button.dataset.sort;
+    journeyRecordSort.direction=journeyRecordSort.key===key?-journeyRecordSort.direction:1;
+    journeyRecordSort.key=key;
+    document.querySelectorAll('.records-table-head .sort-header').forEach(item=>{
+      const arrow=item.querySelector('.sort-arrow');
+      if(arrow)arrow.textContent=item.dataset.sort===key?(journeyRecordSort.direction===1?'▲':'▼'):'';
+      item.setAttribute('aria-sort',item.dataset.sort===key?(journeyRecordSort.direction===1?'ascending':'descending'):'none');
+    });
+    renderJourneyRecords();
+  });
+});
+async function renderJourneyRecords(){
+  const list=document.getElementById('recordList');
+  const count=document.getElementById('recordCount');
+  if(!list||!count)return;
+  let records;
+  try {
+    records=await getJourneyRecords();
+  } catch (error) {
+    alert(`無法載入路線紀錄：${error.message}`);
+    return;
+  }
+  if(journeyRecordSort.key){
+    const fieldValue=(record,key)=>{
+      if(key==='origin')return (Array.isArray(record.routes)?record.routes:[]).find(r=>String(r.from||'').trim())?.from||'未填起點';
+      if(key==='destination')return [...(Array.isArray(record.routes)?record.routes:[])].reverse().find(r=>String(r.to||'').trim())?.to||'未填終點';
+      if(key==='departureTime')return displayDepartureDateTime(record.departureTime);
+      return record[key]|| (key==='title'?'未命名行程':key==='departureTime'?'未設定':'未知');
+    };
+    records.sort((a,b)=>String(fieldValue(a,journeyRecordSort.key)).localeCompare(String(fieldValue(b,journeyRecordSort.key)),'zh-Hant',{numeric:true,sensitivity:'base'})*journeyRecordSort.direction);
+  }
+  count.textContent=`共 ${records.length} 筆紀錄`;
+  list.innerHTML='';
+  const selectAll=document.getElementById('selectAllRecords');
+  if(selectAll){selectAll.checked=false;selectAll.indeterminate=false;selectAll.disabled=!records.length;}
+  if(!records.length){
+    const li=document.createElement('li');li.className='record-empty';li.textContent='目前沒有路線紀錄。請先到「路線規劃」編輯路線並按下「儲存」。';list.append(li);return;
+  }
+  records.forEach(record=>{
+    const li=document.createElement('li');li.className='record-item';
+    const top=document.createElement('div');top.className='record-item-top';
+    const rowMain=document.createElement('div');rowMain.className='record-row-main';
+    const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.className='record-select';checkbox.dataset.recordId=String(record.id);checkbox.setAttribute('aria-label',`勾選路線 ${record.title||'未命名行程'}`);
+    checkbox.addEventListener('change',()=>{
+      const all=[...document.querySelectorAll('#recordList .record-select')];
+      const master=document.getElementById('selectAllRecords');
+      if(master){master.checked=all.length>0&&all.every(box=>box.checked);master.indeterminate=all.some(box=>box.checked)&&!master.checked;}
+    });
+    const savedRoutes=Array.isArray(record.routes)?record.routes:[];
+    const origin=savedRoutes.find(r=>String(r.from||'').trim())?.from||'未填起點';
+    const destination=[...savedRoutes].reverse().find(r=>String(r.to||'').trim())?.to||'未填終點';
+    const values=[record.title||'未命名行程',displayDepartureDateTime(record.departureTime),origin,destination,record.savedAt||'未知'];
+    values.forEach(value=>{const cell=document.createElement('div');cell.className='record-data-cell';cell.textContent=value;rowMain.append(cell);});
+    const rowActions=document.createElement('div');rowActions.className='record-row-actions';
+    const expand=document.createElement('button');expand.type='button';expand.className='secondary';expand.textContent='展開';
+    const detail=document.createElement('div');detail.className='record-detail';detail.hidden=true;
+    expand.addEventListener('click',()=>{
+      const opening=detail.hidden;
+      detail.hidden=!opening;
+      expand.textContent=opening?'收合':'展開';
+      if(opening) renderRecordDetail(detail,record);
+    });
+    rowActions.append(expand);
+    const load=document.createElement('button');load.type='button';load.className='secondary';load.textContent='編輯';
+    load.addEventListener('click',()=>{
+      routes=(Array.isArray(record.routes)?record.routes:[]).map(r=>({
+        ...r,
+        id:Number(r.id)||nextId++,
+        mode:['捷運','公車','火車','ubike','步行'].includes(r.mode)?r.mode:'捷運'
+      }));
+      nextId=Math.max(0,...routes.map(r=>Number(r.id)||0))+1;
+      document.getElementById('departureTime').value=
+        formatDateTimeInput(parseDepartureDateTime(record.departureTime||'09:00'));
+      document.getElementById('routeName').value=record.title||'';
+      document.getElementById('routeName').classList.remove('auto-generated-name');
+      render();
+      document.getElementById('journeySummary').hidden=true;
+      document.getElementById('mapPanel').hidden=true;
+      switchWorkspace('planner');
+      scheduleRoutesCalculation();
+      window.scrollTo({top:0,behavior:'smooth'});
+    });
+    rowActions.append(load);
+    rowMain.append(rowActions);
+    top.append(checkbox,rowMain);li.append(top,detail);list.append(li);
+  });
+}
+function renderRecordDetail(container,record){
+  const savedRoutes=Array.isArray(record.routes)?record.routes:[];
+  const layout=document.createElement('div');layout.className='record-detail-layout';
+  const summary=document.createElement('section');summary.className='record-detail-summary';
+  const heading=document.createElement('h3');heading.textContent='總行程時間與明細';summary.append(heading);
+  const total=renderJourneyLegCards(
+    summary,
+    savedRoutes.map(route=>({...route,time:formatDurationMinutes(durationMinutes(route.time)),stay:formatDurationMinutes(durationMinutes(route.stay))})),
+    record.departureTime||'09:00'
+  );
+  const totalEl=document.createElement('div');totalEl.className='record-detail-total';totalEl.textContent=formatDurationMinutes(total);summary.prepend(totalEl);
+  const map=document.createElement('section');map.className='record-detail-map';const mapHeading=document.createElement('h3');mapHeading.textContent='Google Maps';map.append(mapHeading);
+  const mapSegments=document.createElement('div');mapSegments.className='map-segments';
+  const mapResult=renderGoogleMapsSegments(mapSegments,savedRoutes,'route');
+  if(!mapResult.displayed){const note=document.createElement('p');note.textContent='這筆紀錄尚未有足夠的起點與終點可顯示地圖。';map.append(note);}
+  else if(mapResult.skipped){const note=document.createElement('p');note.textContent=`另有 ${mapResult.skipped} 筆缺少起點或終點，未顯示地圖。`;map.append(note);}
+  map.append(mapSegments);layout.append(summary,map);container.replaceChildren(layout);
+}
+function switchWorkspace(which){
+  const views = {
+    planner: ['routePlannerView', 'plannerTab'],
+    records: ['recordsView', 'recordsTab'],
+    settings: ['settingsView', 'settingsTab'],
+  };
+  Object.entries(views).forEach(([name, [viewId, tabId]]) => {
+    document.getElementById(viewId).hidden = name !== which;
+    document.getElementById(tabId).classList.toggle('active', name === which);
+  });
+}
+document.getElementById('plannerTab').addEventListener('click',()=>switchWorkspace('planner'));
+document.getElementById('recordsTab').addEventListener('click',()=>{switchWorkspace('records');renderJourneyRecords();});
+document.getElementById('settingsTab').addEventListener('click',()=>switchWorkspace('settings'));
+
+// 行程明細可收合至側邊，也可隨時展開。
+(() => {
+  const layout = document.getElementById('resultsLayout');
+  const collapse = document.getElementById('collapseSummary');
+  const restore = document.getElementById('restoreSummary');
+  if (!layout || !collapse || !restore) return;
+  collapse.addEventListener('click', () => {
+    layout.classList.add('summary-collapsed');
+    restore.setAttribute('aria-expanded', 'false');
+    restore.focus();
+  });
+  restore.addEventListener('click', () => {
+    layout.classList.remove('summary-collapsed');
+    restore.setAttribute('aria-expanded', 'true');
+    collapse.focus();
+  });
+})();
+
+// 拖曳中間分隔條，動態調整摘要與地圖欄寬。
+(() => {
+  const layout = document.getElementById('resultsLayout');
+  const splitter = document.getElementById('resultSplitter');
+  if (!layout || !splitter) return;
+  let dragging = false;
+  const setRatio = (clientX) => {
+    const rect = layout.getBoundingClientRect();
+    const usable = rect.width - 32;
+    const x = Math.max(0.25, Math.min(0.7, (clientX - rect.left) / usable));
+    layout.style.gridTemplateColumns = `minmax(240px, ${x}fr) 8px minmax(280px, ${1-x}fr)`;
+  };
+  splitter.addEventListener('pointerdown', e => {
+    if (window.matchMedia('(max-width: 900px)').matches) return;
+    dragging = true;
+    splitter.setPointerCapture(e.pointerId);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  splitter.addEventListener('pointermove', e => { if (dragging) setRatio(e.clientX); });
+  const stop = () => {
+    dragging = false;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  };
+  splitter.addEventListener('pointerup', stop);
+  splitter.addEventListener('pointercancel', stop);
+  splitter.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const cols = getComputedStyle(layout).gridTemplateColumns.split(' ');
+    const rect = layout.getBoundingClientRect();
+    const currentLeft = parseFloat(cols[0]) || rect.width * 0.42;
+    setRatio(rect.left + currentLeft + (e.key === 'ArrowRight' ? 24 : -24));
+  });
+})();
+
+</script>
+</body>
+</html>
