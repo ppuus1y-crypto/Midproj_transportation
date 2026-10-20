@@ -80,11 +80,11 @@
 <section id="settingsView" class="workspace-view" hidden>
   <h2>設定</h2>
   <section class="panel settings-panel" aria-labelledby="placesSettingsHeading">
-    <h3 id="placesSettingsHeading">地點模糊查詢</h3>
+    <h3 id="placesSettingsHeading">地點搜尋建議</h3>
     <div id="placesControls">
       <label for="placesApiToggle">
         <input id="placesApiToggle" type="checkbox">
-        使用 Google Places API (New)
+        使用 Google Places Autocomplete widget
       </label>
       <span id="placesApiStatus" role="status">目前關閉。</span>
     </div>
@@ -153,8 +153,6 @@ const apiBaseUrl = window.location.port === '5500'
   ? `${window.location.protocol}//${window.location.hostname}:5000`
   : '';
 const apiUrl = path => `${apiBaseUrl}${path}`;
-const placesTimers = new WeakMap();
-const placesLastInput = new WeakMap();
 let routesCalculationTimer = null;
 let routesCalculationVersion = 0;
 let routesCalculationPromise = Promise.resolve();
@@ -183,10 +181,17 @@ async function refreshPlacesStatus() {
     const s=await readApiJson(response);
     if (!response.ok) throw new Error(s.error || '無法取得 Places API 狀態。');
     placesApiToggle.checked=Boolean(s.enabled);
-    placesApiToggle.disabled=!s.configured;
-    placesApiStatus.textContent=!s.configured?'尚未設定 API 金鑰；目前只能手動輸入。':
+    placesApiToggle.disabled=!s.configured&&!s.enabled;
+    placesApiStatus.textContent=!s.configured?'尚未設定 GOOGLE_MAPS_BROWSER_API_KEY，或尚未啟用 Places API (New)；目前只能手動輸入。':
       s.enabled?'已開啟。':
       '目前關閉。';
+    if (s.enabled && s.configured) {
+      try {
+        await setPlaceWidgetsEnabled(true);
+      } catch (error) {
+        placesApiStatus.textContent = `無法載入 Google Autocomplete widget：${error.message}`;
+      }
+    }
   } catch {
     placesApiToggle.checked=false;
     placesApiStatus.textContent='無法取得 API 狀態，請確認 Flask 正在執行。';
@@ -197,45 +202,63 @@ placesApiToggle.addEventListener('change',async()=>{
   try {
     const r=await fetch(apiUrl('/api/places/toggle'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled})});
     const d=await readApiJson(r); if(!r.ok)throw new Error(d.error||'切換失敗');
+    await setPlaceWidgetsEnabled(enabled);
   } catch(e){alert(e.message);}
   await refreshPlacesStatus();
 });
-async function fetchPlaceSuggestions(input) {
-  const menu=input._placesMenu;
-  if(!menu||!placesApiToggle.checked)return;
-  const query=input.value.trim();
-  if(query.length<2){menu.hidden=true;return;}
-  if(placesLastInput.get(input)===query)return;
-  placesLastInput.set(input,query);
-  try {
-    const r=await fetch(apiUrl('/api/places/autocomplete'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input:query})});
-    const d=await readApiJson(r);
-    if(!r.ok){
-      if(d.disabled){placesApiToggle.checked=false;await refreshPlacesStatus();}
-      menu.replaceChildren();const note=document.createElement('div');note.textContent=d.error||'無法取得地點建議';
-      note.style.cssText='padding:10px;color:#64748b;font-size:13px';menu.appendChild(note);menu.hidden=false;return;
-    }
-    menu.replaceChildren();
-    (d.suggestions||[]).forEach(item=>{
-      const option=document.createElement('button');option.type='button';option.textContent=item.text;
-      option.style.cssText='display:block;width:100%;padding:10px;text-align:left;border:0;background:white;cursor:pointer';
-      option.addEventListener('mousedown',e=>e.preventDefault());
-      option.addEventListener('click',()=>{
-        input.value=item.text;const row=input.closest('tr');
-        const route=routes.find(r=>r.id===Number(row.dataset.id));
-        if(route){route[input.className]=item.text;delete route.encodedPolyline;}
-        scheduleRoutesCalculation();
-        if(mapsApiToggle.checked&&googleMap)drawGoogleMapRoutes(routes);
-        menu.hidden=true;
-      });
-      menu.appendChild(option);
+async function setPlaceWidgetsEnabled(enabled) {
+  if (enabled) {
+    const maps = await loadGoogleMapsApi();
+    const {PlaceAutocompleteElement} = await maps.importLibrary('places');
+    if (!placesApiToggle.checked) return;
+    document.querySelectorAll('.place-input-wrapper').forEach(wrapper => {
+      const input = wrapper.querySelector('input.from, input.to');
+      if (placesApiToggle.checked && input) {
+        installPlaceWidget(wrapper, input, input.className, PlaceAutocompleteElement);
+      }
     });
-    menu.hidden=!(d.suggestions||[]).length;await refreshPlacesStatus();
-  } catch {menu.hidden=true;}
+    return;
+  }
+  document.querySelectorAll('.place-input-wrapper gmp-place-autocomplete').forEach(widget => {
+    const wrapper = widget.parentElement;
+    const cls = widget.dataset.routeField;
+    const route = routes.find(item => item.id === Number(wrapper.closest('tr')?.dataset.id));
+    const input = document.createElement('input');
+    input.className = cls;
+    input.autocomplete = 'off';
+    input.placeholder = cls === 'from' ? '輸入起點' : '輸入終點';
+    input.value = route?.[cls] || widget.value || '';
+    input.addEventListener('input', () => updateRoutePlace(wrapper, cls, input.value));
+    widget.replaceWith(input);
+  });
 }
-function schedulePlaceSuggestions(input) {
-  clearTimeout(placesTimers.get(input));placesLastInput.delete(input);
-  placesTimers.set(input,setTimeout(()=>fetchPlaceSuggestions(input),450));
+function updateRoutePlace(wrapper, cls, value) {
+  const row = wrapper.closest('tr');
+  const route = routes.find(item => item.id === Number(row?.dataset.id));
+  if (!route || route[cls] === value) return;
+  route[cls] = value;
+  delete route.encodedPolyline;
+  scheduleRoutesCalculation();
+  if (mapsApiToggle.checked && googleMap) drawGoogleMapRoutes(routes);
+}
+function installPlaceWidget(wrapper, input, cls, PlaceAutocompleteElement) {
+  if (wrapper.querySelector('gmp-place-autocomplete')) return;
+  const widget = new PlaceAutocompleteElement();
+  widget.className = `place-autocomplete-widget ${cls}`;
+  widget.dataset.routeField = cls;
+  widget.placeholder = input.placeholder;
+  widget.includedRegionCodes = ['tw'];
+  widget.requestedLanguage = 'zh-TW';
+  widget.value = input.value;
+  widget.setAttribute('aria-label', cls === 'from' ? '起點' : '終點');
+  widget.addEventListener('input', () => {
+    if (typeof widget.value === 'string') updateRoutePlace(wrapper, cls, widget.value);
+  });
+  widget.addEventListener('gmp-select', event => {
+    const selectedText = event.placePrediction?.text?.text;
+    if (selectedText) updateRoutePlace(wrapper, cls, selectedText);
+  });
+  input.replaceWith(widget);
 }
 refreshPlacesStatus();
 
@@ -349,18 +372,13 @@ function createInput(value, cls, placeholder='') {
   input.placeholder=placeholder;
   input.autocomplete='off';
   input.addEventListener('input',()=>{
-    const row=input.closest('tr');
-    const route=routes.find(r=>r.id===Number(row.dataset.id));
-    if(route){
-      route[cls]=input.value;
-      if(cls==='from'||cls==='to')delete route.encodedPolyline;
-    }
-    if ((cls==='from'||cls==='to') && placesApiToggle.checked) schedulePlaceSuggestions(input);
-    if (cls==='from'||cls==='to'||cls==='stay') {
+    if (cls==='from'||cls==='to') {
+      updateRoutePlace(input.closest('.place-input-wrapper'), cls, input.value);
+    } else if (cls==='stay') {
+      const row=input.closest('tr');
+      const route=routes.find(r=>r.id===Number(row.dataset.id));
+      if(route) route[cls]=input.value;
       scheduleRoutesCalculation();
-      if ((cls==='from'||cls==='to') && mapsApiToggle.checked && googleMap) {
-        drawGoogleMapRoutes(routes);
-      }
     }
   });
   if (cls === 'time') {
@@ -370,15 +388,20 @@ function createInput(value, cls, placeholder='') {
   }
   if(cls==='from'||cls==='to'){
     const wrapper=document.createElement('div');
-    wrapper.style.position='relative';
+    wrapper.className='place-input-wrapper';
     wrapper.appendChild(input);
-    const menu=document.createElement('div');
-    Object.assign(menu.style,{position:'absolute',left:'0',right:'0',top:'100%',zIndex:'1000',background:'#fff',border:'1px solid #cbd5e1',borderRadius:'8px',boxShadow:'0 4px 12px #0002',maxHeight:'240px',overflowY:'auto'});
-    menu.hidden=true;
-    wrapper.appendChild(menu);
-    input._placesMenu=menu;
-    input.addEventListener('blur',()=>setTimeout(()=>{menu.hidden=true;},180));
-    input.addEventListener('focus',()=>{if(placesApiToggle.checked&&input.value.trim().length>=2)schedulePlaceSuggestions(input);});
+    if (placesApiToggle.checked) {
+      loadGoogleMapsApi()
+        .then(maps => maps.importLibrary('places'))
+        .then(({PlaceAutocompleteElement}) => {
+          if (placesApiToggle.checked && wrapper.isConnected) {
+            installPlaceWidget(wrapper, input, cls, PlaceAutocompleteElement);
+          }
+        })
+        .catch(error => {
+          placesApiStatus.textContent = `無法載入 Google Autocomplete widget：${error.message}`;
+        });
+    }
     return wrapper;
   }
   return input;

@@ -259,7 +259,7 @@ def _set_setting(key, value):
 def places_status():
     return jsonify({
         "enabled": _get_setting("google_places_enabled") == "true",
-        "configured": bool(PLACES_API_KEY),
+        "configured": bool(MAPS_BROWSER_API_KEY),
     })
 
 
@@ -269,52 +269,15 @@ def places_toggle():
     enabled = data.get("enabled")
     if not isinstance(enabled, bool):
         return jsonify({"error": "enabled 必須是 true 或 false。"}), 400
-    if enabled and not PLACES_API_KEY:
-        return jsonify({"error": "尚未設定 GOOGLE_PLACES_API_KEY 環境變數。"}), 400
+    if enabled and not MAPS_BROWSER_API_KEY:
+        return jsonify({
+            "error": "使用 Google Autocomplete widget 需要設定 GOOGLE_MAPS_BROWSER_API_KEY。"
+        }), 400
     _set_setting("google_places_enabled", "true" if enabled else "false")
     return jsonify({
         "enabled": enabled,
-        "configured": bool(PLACES_API_KEY),
+        "configured": bool(MAPS_BROWSER_API_KEY),
     })
-
-
-@app.post("/api/places/autocomplete")
-def places_autocomplete():
-    data = request.get_json(silent=True) or {}
-    text = str(data.get("input") or "").strip()
-    if len(text) < 2:
-        return jsonify({"suggestions": []})
-    if _get_setting("google_places_enabled") != "true":
-        return jsonify({"error": "Google 地點自動完成已關閉，請手動輸入。", "disabled": True}), 403
-    if not PLACES_API_KEY:
-        return jsonify({"error": "伺服器尚未設定 API 金鑰。"}), 503
-
-    req = urllib.request.Request(
-        "https://places.googleapis.com/v1/places:autocomplete",
-        data=json.dumps({"input": text, "languageCode": "zh-TW", "includedRegionCodes": ["tw"]}).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": PLACES_API_KEY,
-            "X-Goog-FieldMask": "suggestions.placePrediction.placeId,suggestions.placePrediction.text",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=12) as response:
-            result = json.loads(response.read().decode("utf-8"))
-        suggestions = []
-        for item in result.get("suggestions", []):
-            prediction = item.get("placePrediction", {})
-            label = prediction.get("text", {}).get("text", "")
-            if label:
-                suggestions.append({"text": label, "placeId": prediction.get("placeId", "")})
-        return jsonify({"suggestions": suggestions})
-    except urllib.error.HTTPError as error:
-        app.logger.error("Places API HTTP %s: %s", error.code, error.read().decode("utf-8", errors="replace"))
-        return jsonify({"error": "Google Places API 查詢失敗，請確認金鑰、API 啟用狀態及帳單設定。"}), 502
-    except (urllib.error.URLError, TimeoutError):
-        app.logger.exception("Places API 連線失敗")
-        return jsonify({"error": "目前無法連線至 Google Places API，請稍後再試。"}), 502
 
 
 @app.get("/api/routes/status")
@@ -369,7 +332,10 @@ def maps_toggle():
 
 @app.get("/api/maps/config")
 def maps_config():
-    if _get_setting("google_maps_enabled") != "true":
+    if (
+        _get_setting("google_maps_enabled") != "true"
+        and _get_setting("google_places_enabled") != "true"
+    ):
         return jsonify({"error": "Google Maps 載入功能目前已關閉。"}), 403
     if not MAPS_BROWSER_API_KEY:
         return jsonify({

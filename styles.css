@@ -289,6 +289,9 @@ tbody td{padding:12px 10px;border-bottom:1px solid #edf0f5}
 tbody tr:last-child td{border-bottom:0}
 tbody tr:hover{background:#fafbfd}
 tbody input,tbody select{min-height:42px}
+.place-input-wrapper{min-width:150px}
+.place-input-wrapper>input,.place-input-wrapper>gmp-place-autocomplete{display:block;width:100%;min-width:0}
+.place-input-wrapper>.place-autocomplete-widget{min-height:42px}
 .records-heading{padding:0;background:transparent;border:0;border-radius:0;margin-bottom:22px}
 .records-table-head{background:#60788b3f!important;border-color:var(--ui-border)!important;color:#1f2937!important;font-size:12px!important;padding:15px 13px!important}
 .record-item{background:#fff;border-color:#e9edf3!important;padding:8px 12px!important;transition:background .15s ease}
